@@ -1884,7 +1884,8 @@ if __name__ == "__main__":
 
     # 儲存 Markdown 報告
     report_md = generate_report(df_top10, all_results, market)
-    report_dir = os.path.dirname(os.path.abspath(__file__))
+    report_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "daily_run")
+    os.makedirs(report_dir, exist_ok=True)
     output_path = os.path.join(report_dir, f"surge_report_{TRADE_DATE}.md")
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(report_md)
