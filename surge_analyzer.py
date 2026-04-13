@@ -14,11 +14,10 @@ import pandas as pd
 import yfinance as yf
 import json
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 def _get_last_trading_date() -> str:
     """自動計算最近一個台股交易日（YYYYMMDD），跳過週末。以台灣時區（UTC+8）為基準。"""
-    from datetime import datetime, timedelta, timezone
     TW = timezone(timedelta(hours=8))
     candidate = datetime.now(TW).replace(hour=0, minute=0, second=0, microsecond=0)
     # 若是週末則往前找最近的週五
@@ -522,7 +521,8 @@ def fetch_news_sentiment(hours_back: int = 48) -> dict:
       summary     : 簡短文字說明
     """
     import urllib.parse
-    cutoff = datetime.utcnow() - timedelta(hours=hours_back)
+    _now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    cutoff = _now_utc - timedelta(hours=hours_back)
     all_entries = []
 
     # ── 英文來源 ──
@@ -537,7 +537,7 @@ def fetch_news_sentiment(hours_back: int = 48) -> dict:
                     if pub_dt < cutoff:
                         continue
                 else:
-                    pub_dt = datetime.utcnow()
+                    pub_dt = _now_utc
 
                 all_entries.append({
                     "title_raw": entry.get("title", ""),
@@ -564,7 +564,7 @@ def fetch_news_sentiment(hours_back: int = 48) -> dict:
                     if pub_dt < cutoff:
                         continue
                 else:
-                    pub_dt = datetime.utcnow()
+                    pub_dt = _now_utc
 
                 # 移除標題末尾的分類標籤與來源
                 # e.g. "標題| 政治 - 中央社 CNA" → "標題"
