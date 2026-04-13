@@ -17,10 +17,10 @@ import re
 from datetime import datetime, timedelta
 
 def _get_last_trading_date() -> str:
-    """自動計算最近一個台股交易日（YYYYMMDD），跳過週末。"""
-    from datetime import datetime, timedelta
-    candidate = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-    # UTC 06:30 執行時台灣已是 14:30，當日已收盤，直接使用當日
+    """自動計算最近一個台股交易日（YYYYMMDD），跳過週末。以台灣時區（UTC+8）為基準。"""
+    from datetime import datetime, timedelta, timezone
+    TW = timezone(timedelta(hours=8))
+    candidate = datetime.now(TW).replace(hour=0, minute=0, second=0, microsecond=0)
     # 若是週末則往前找最近的週五
     while candidate.weekday() >= 5:  # 5=Saturday, 6=Sunday
         candidate -= timedelta(days=1)
