@@ -16,8 +16,18 @@ import json
 import re
 from datetime import datetime, timedelta
 
-TRADE_DATE = "20260410"
-TRADE_DATE_FMT = "2026-04-10"
+def _get_last_trading_date() -> str:
+    """自動計算最近一個台股交易日（YYYYMMDD），跳過週末。"""
+    from datetime import datetime, timedelta
+    candidate = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    # UTC 06:30 執行時台灣已是 14:30，當日已收盤，直接使用當日
+    # 若是週末則往前找最近的週五
+    while candidate.weekday() >= 5:  # 5=Saturday, 6=Sunday
+        candidate -= timedelta(days=1)
+    return candidate.strftime("%Y%m%d")
+
+TRADE_DATE = _get_last_trading_date()
+TRADE_DATE_FMT = f"{TRADE_DATE[:4]}-{TRADE_DATE[4:6]}-{TRADE_DATE[6:]}"
 
 
 # ─────────────────────────────────────────
@@ -1874,8 +1884,8 @@ if __name__ == "__main__":
 
     # 儲存 Markdown 報告
     report_md = generate_report(df_top10, all_results, market)
-    report_dir = "C:/Users/BaoGo/Documents/ClaudeCode/Stock_AI_agent"
-    output_path = f"{report_dir}/surge_report_{TRADE_DATE}.md"
+    report_dir = os.path.dirname(os.path.abspath(__file__))
+    output_path = os.path.join(report_dir, f"surge_report_{TRADE_DATE}.md")
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(report_md)
     print(f"\n✓ 報告已儲存：{output_path}")
