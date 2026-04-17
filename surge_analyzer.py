@@ -1275,23 +1275,6 @@ def main():
     top100 = fetch_top100_by_volume(TRADE_DATE)
     print(f"  取得 {len(top100)} 支個股\n")
 
-    print("► 大盤趨勢預測（TWII + 美股）...")
-    market = predict_market_trend()
-    direction_label = {
-        "strong_bull": "強力多頭",
-        "bull":        "偏多",
-        "neutral":     "盤整觀望",
-        "bear":        "偏空",
-        "strong_bear": "強力空頭",
-    }.get(market["direction"], "不明")
-    etf = market["etf_action"]
-    print(f"  大盤評分：{market['score']:+d} ｜ 方向：{direction_label}")
-    if etf["code"]:
-        print(f"  ETF 建議：{etf['action']} {etf['code']} ({etf['name']})")
-    else:
-        print(f"  ETF 建議：{etf['action']}")
-    print()
-
     print("► 抓取三大法人籌碼...")
     inst_all = fetch_institutional(TRADE_DATE)
     print(f"  取得 {len(inst_all)} 支法人資料\n")
@@ -1346,12 +1329,18 @@ def main():
 
     print(f"\n  分析完成，有效股票數：{len(results)}")
 
-    # 排序取前 10
-    df_result = pd.DataFrame(results).sort_values("surge_score", ascending=False).head(10).reset_index(drop=True)
-    return df_result, results, market
+    # 過濾評分 >= 70，再依分數排序取前 10
+    df_result = (
+        pd.DataFrame(results)
+        .query("surge_score >= 70")
+        .sort_values("surge_score", ascending=False)
+        .head(10)
+        .reset_index(drop=True)
+    )
+    return df_result, results
 
 
-def generate_report(df_top10: pd.DataFrame, all_results: list, market: dict = None) -> str:
+def generate_report(df_top10: pd.DataFrame, all_results: list) -> str:
     lines = []
     lines.append(f"# 台股前百大交易量 — 隔日暴漲潛力 TOP 10")
     lines.append(f"**分析基準日**：{TRADE_DATE_FMT}　｜　**預測目標日**：2026-04-11（下一交易日）")
@@ -1361,153 +1350,8 @@ def generate_report(df_top10: pd.DataFrame, all_results: list, market: dict = No
     lines.append("---")
     lines.append("")
 
-    # 大盤趨勢預測區塊
-    if market:
-        twii = market.get("twii", {})
-        us   = market.get("us_markets", {})
-        etf  = market.get("etf_action", {})
-        direction_zh = {
-            "strong_bull": "強力多頭",
-            "bull":        "偏多",
-            "neutral":     "盤整觀望",
-            "bear":        "偏空",
-            "strong_bear": "強力空頭",
-        }.get(market["direction"], "不明")
-        score = market["score"]
-        score_bar = "█" * (abs(score) // 10) + "░" * (10 - abs(score) // 10)
-        score_sign = "+" if score >= 0 else ""
-
-        lines.append("## 大盤趨勢預測")
-        lines.append("")
-        lines.append(f"| 項目 | 數值 |")
-        lines.append(f"|------|------|")
-        lines.append(f"| 大盤方向 | **{direction_zh}** |")
-        lines.append(f"| 綜合評分 | `{score_sign}{score}` （{score_bar}）|")
-        lines.append(f"| 隔日漲 5%+ 概率 | {market['rise_5pct_prob']} |")
-        lines.append(f"| 隔日跌 5%+ 概率 | {market['fall_5pct_prob']} |")
-        lines.append(f"| 一週趨勢預測 | {market['weekly_trend']} |")
-        lines.append("")
-
-        if twii:
-            lines.append("### 台股加權指數（TWII）")
-            lines.append(f"- 最新收盤：**{twii.get('last', 'N/A')}**（當日 {twii.get('day_chg_pct', 0):+.2f}%）")
-            lines.append(f"- MA5/MA20/MA60：{twii.get('ma5')} / {twii.get('ma20')} / {twii.get('ma60', 'N/A')}")
-            lines.append(f"- RSI(14)：{twii.get('rsi')}　｜　MACD DIF/DEA：{twii.get('dif')} / {twii.get('dea')}")
-            lines.append(f"- 布林通道位置：{twii.get('bb_pos', 0):.0%}（0%=下軌，100%=上軌）")
-            lines.append(f"- 近5日漲幅：{twii.get('ret5', 0):+.2f}%　｜　近10日：{twii.get('ret10', 0):+.2f}%")
-            lines.append(f"- 成交量比：{twii.get('vol_ratio', 0):.1f}x")
-            lines.append("")
-
-        if us:
-            lines.append("### 美股三大指數（前收盤）")
-            for name, d in us.items():
-                if d.get("close"):
-                    lines.append(f"- **{name}**：{d['close']:,}（{d['chg_pct']:+.2f}%）")
-            lines.append("")
-
-        lines.append("### 訊號清單")
-        for sig in market.get("signals", []):
-            icon = "🟢" if any(k in sig for k in ["多頭", "金叉", "強勢", "漲", "偏多", "超賣", "反彈"]) else "🔴"
-            lines.append(f"- {icon} {sig}")
-        lines.append("")
-
-        # 新聞情緒分析區塊
-        news = market.get("news", {})
-        if news:
-            cat_zh = {
-                "trump":     "川普/關稅",
-                "strait":    "台海局勢",
-                "semi":      "半導體/TSMC",
-                "fed":       "Fed/利率",
-                "tw_macro":  "台灣總體",
-                "us_china":  "美中關係",
-            }
-            lines.append("### 新聞情緒分析")
-            lines.append(f"- **新聞評分**：{news['score']:+d}　｜　{news['summary']}")
-            lines.append(f"- 掃描新聞：{news['all_count']} 則，有情緒影響：{news['scored_count']} 則")
-            lines.append("")
-
-            if news.get("category_scores"):
-                lines.append("**各類別評分：**")
-                for cat, s in sorted(news["category_scores"].items(), key=lambda x: abs(x[1]), reverse=True):
-                    bar = "+" * max(0, s // 5) if s > 0 else "-" * max(0, abs(s) // 5)
-                    lines.append(f"- {cat_zh.get(cat, cat)}：{s:+d}　`{bar}`")
-                lines.append("")
-
-            if news.get("items"):
-                lines.append("**重要新聞（按影響力排序）：**")
-                lines.append("")
-                lines.append("| 影響 | 時間 | 來源 | 標題 |")
-                lines.append("|------|------|------|------|")
-                for item in news["items"][:10]:
-                    icon = "🟢" if item["score"] > 0 else "🔴"
-                    score_str = f"{icon} {item['score']:+d}"
-                    # 繁中新聞優先顯示中文標題
-                    display_title = item.get("title_zh") or item["title_raw"]
-                    title_short = display_title[:58] + ("…" if len(display_title) > 58 else "")
-                    src_label = item["source"][:18]
-                    lines.append(f"| {score_str} | {item['pub']} | {src_label} | {title_short} |")
-                lines.append("")
-
-        # 外部訊號區塊（Polymarket + Market-Intel）
-        ext = market.get("external_signals", {})
-        poly_data  = ext.get("polymarket", {})
-        intel_data = ext.get("market_intel", {})
-        ext_score  = ext.get("combined_score", 0)
-
-        if poly_data.get("available") or intel_data.get("available"):
-            lines.append("### 外部市場共識訊號")
-            lines.append(
-                f"- **綜合貢獻分數**：{ext_score:+d}"
-                f"（Polymarket {poly_data.get('score', 0):+d} × 60%"
-                f" + MarketIntel {intel_data.get('score', 0):+d} × 40%）"
-            )
-            lines.append("")
-
-            # Polymarket + VIX 表格
-            if poly_data.get("items"):
-                vix_val = poly_data.get("vix")
-                vix_str = f"VIX {vix_val}" if vix_val else ""
-                lines.append(
-                    f"**Polymarket 預測市場 + VIX 恐慌指數**"
-                    + (f"（{vix_str}）" if vix_str else "") + "："
-                )
-                lines.append("")
-                lines.append("| 類別 | 指標/問題 | Yes 概率 | 訊號分 |")
-                lines.append("|------|-----------|----------|--------|")
-                for item in poly_data["items"]:
-                    prob = f"{item['yes_prob']}%" if item.get("yes_prob") is not None else "N/A"
-                    icon = "🟢" if item["signal_score"] > 0 else "🔴" if item["signal_score"] < 0 else "⚪"
-                    lines.append(
-                        f"| {item['label']} | {item['question'][:52]} "
-                        f"| {prob} | {icon} {item['signal_score']:+d} |"
-                    )
-                lines.append("")
-
-            # Market-Intel 清單
-            if intel_data.get("items"):
-                ratio   = intel_data.get("bullish_ratio", 0.5)
-                verdict = (intel_data.get("verdict") or "").upper()
-                lines.append(
-                    f"**AI-Trader Market-Intel**"
-                    f"（{verdict}，多頭比率 {ratio:.0%}，評分 {intel_data.get('score', 0):+d}）："
-                )
-                for it in intel_data["items"]:
-                    lines.append(f"- {it}")
-                lines.append("")
-
-        lines.append("### ETF 操作建議")
-        if etf.get("code"):
-            lines.append(f"**建議：{etf['action']} [{etf['code']}] {etf['name']}**")
-        else:
-            lines.append(f"**建議：{etf['action']}**")
-        lines.append(f"> {etf['reason']}")
-        lines.append("")
-        lines.append("---")
-        lines.append("")
-
-    # 個股分析樣本說明
-    lines.append("## 大盤環境摘要")
+    # 分析說明
+    lines.append("## 分析說明")
     lines.append("- **分析樣本**：TWSE 全市場 1350 支個股，依成交量(張)取前 100 支個股進行篩選")
     lines.append("")
     lines.append("---")
@@ -1874,16 +1718,19 @@ if __name__ == "__main__":
     parser.add_argument("--no-line", action="store_true", help="跳過 LINE 推播")
     args = parser.parse_args()
 
-    df_top10, all_results, market = main()
+    df_top10, all_results = main()
 
     print("\n" + "="*60)
-    print(" TOP 10 暴漲潛力股（評分排名）")
+    print(f" 評分 ≥ 70 暴漲潛力股（共 {len(df_top10)} 檔）")
     print("="*60)
-    print(df_top10[["code", "name", "close", "change_pct", "volume_lots",
-                     "surge_score"]].to_string(index=False))
+    if df_top10.empty:
+        print("  今日無符合條件（≥70分）股票")
+    else:
+        print(df_top10[["code", "name", "close", "change_pct", "volume_lots",
+                         "surge_score"]].to_string(index=False))
 
     # 儲存 Markdown 報告
-    report_md = generate_report(df_top10, all_results, market)
+    report_md = generate_report(df_top10, all_results)
     report_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "daily_run")
     os.makedirs(report_dir, exist_ok=True)
     output_path = os.path.join(report_dir, f"surge_report_{TRADE_DATE}.md")
@@ -1891,10 +1738,13 @@ if __name__ == "__main__":
         f.write(report_md)
     print(f"\n✓ 報告已儲存：{output_path}")
 
-    # LINE 推播
+    # LINE 推播（Flex Card 卡片格式，高分→低分由左而右）
     if not args.no_line:
-        print("\n► 發送 LINE 推播...")
-        market_msg = build_market_line_message(market)
-        stock_msgs = build_line_messages(df_top10, TRADE_DATE)
-        # 大盤預測放第一則，接著個股排行與分析
-        send_line_messages([market_msg] + stock_msgs)
+        print("\n► 發送 LINE Flex Card 推播...")
+        try:
+            from line_push import push_surge_report
+            push_surge_report(df_top10)
+        except Exception as e:
+            print(f"[LINE] Flex 推播失敗，改用文字版：{e}")
+            stock_msgs = build_line_messages(df_top10, TRADE_DATE)
+            send_line_messages(stock_msgs)

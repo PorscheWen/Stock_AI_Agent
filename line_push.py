@@ -69,23 +69,8 @@ def _inst_fmt(val) -> str:
     return f"{v:,}"
 
 
-# ── 大盤總覽 Bubble ────────────────────────────────────
-def _market_bubble(market: dict, date_str: str, top10_count: int) -> dict:
-    direction_zh = {
-        "strong_bull": "強力多頭 🚀",
-        "bull":        "偏多 📈",
-        "neutral":     "盤整觀望 ➡️",
-        "bear":        "偏空 📉",
-        "strong_bear": "強力空頭 ⚠️",
-    }.get(market.get("direction", "neutral"), "不明")
-
-    score = market.get("score", 0)
-    score_color = "#1A5276" if score >= 20 else "#E74C3C" if score <= -20 else "#7B7D7D"
-    twii = market.get("twii", {})
-    etf  = market.get("etf_action", {})
-    news_score = market.get("news", {}).get("score", 0)
-    news_summary = market.get("news", {}).get("summary", "")
-
+# ── 摘要 Bubble ───────────────────────────────────────
+def _summary_bubble(date_str: str, count: int) -> dict:
     return {
         "type": "bubble",
         "size": "mega",
@@ -105,95 +90,32 @@ def _market_bubble(market: dict, date_str: str, top10_count: int) -> dict:
             "spacing": "sm",
             "paddingAll": "14px",
             "contents": [
-                # 大盤方向
                 {
                     "type": "box",
-                    "layout": "horizontal",
+                    "layout": "vertical",
+                    "backgroundColor": "#EBF5FB",
+                    "paddingAll": "16px",
+                    "cornerRadius": "8px",
                     "contents": [
-                        {
-                            "type": "box",
-                            "layout": "vertical",
-                            "flex": 1,
-                            "backgroundColor": "#EBF5FB",
-                            "paddingAll": "10px",
-                            "cornerRadius": "8px",
-                            "contents": [
-                                {"type": "text", "text": "大盤方向", "size": "xs", "color": "#888", "align": "center"},
-                                {"type": "text", "text": direction_zh, "size": "sm", "weight": "bold", "align": "center", "wrap": True},
-                            ],
-                        },
-                        {"type": "box", "layout": "vertical", "flex": 0, "width": "8px", "contents": []},
-                        {
-                            "type": "box",
-                            "layout": "vertical",
-                            "flex": 1,
-                            "backgroundColor": "#EBF5FB",
-                            "paddingAll": "10px",
-                            "cornerRadius": "8px",
-                            "contents": [
-                                {"type": "text", "text": "綜合評分", "size": "xs", "color": "#888", "align": "center"},
-                                {"type": "text", "text": f"{score:+d}", "size": "xl", "weight": "bold", "color": score_color, "align": "center"},
-                            ],
-                        },
-                        {"type": "box", "layout": "vertical", "flex": 0, "width": "8px", "contents": []},
-                        {
-                            "type": "box",
-                            "layout": "vertical",
-                            "flex": 1,
-                            "backgroundColor": "#EBF5FB",
-                            "paddingAll": "10px",
-                            "cornerRadius": "8px",
-                            "contents": [
-                                {"type": "text", "text": "今日精選", "size": "xs", "color": "#888", "align": "center"},
-                                {"type": "text", "text": f"{top10_count} 檔", "size": "xl", "weight": "bold", "color": "#1E8449", "align": "center"},
-                            ],
-                        },
-                    ],
-                },
-                {"type": "separator", "margin": "sm"},
-                # TWII
-                {
-                    "type": "box",
-                    "layout": "horizontal",
-                    "margin": "sm",
-                    "contents": [
-                        {"type": "text", "text": "TWII", "size": "xs", "color": "#888", "flex": 1},
-                        {"type": "text", "text": f"{twii.get('last', 'N/A')}", "size": "sm", "weight": "bold", "flex": 2},
-                        {"type": "text", "text": f"RSI {twii.get('rsi', 'N/A')}", "size": "xs", "color": "#555", "flex": 2, "align": "end"},
-                    ],
-                },
-                # 新聞情緒
-                {
-                    "type": "box",
-                    "layout": "horizontal",
-                    "contents": [
-                        {"type": "text", "text": "新聞情緒", "size": "xs", "color": "#888", "flex": 1},
+                        {"type": "text", "text": "今日精選（評分 ≥ 70）", "size": "xs", "color": "#888", "align": "center"},
                         {
                             "type": "text",
-                            "text": f"{news_score:+d}　{news_summary[:16]}",
-                            "size": "xs",
-                            "color": "#27AE60" if news_score >= 0 else "#E74C3C",
-                            "flex": 4,
-                            "wrap": True,
+                            "text": f"{count} 檔" if count > 0 else "今日無符合",
+                            "size": "xxl",
+                            "weight": "bold",
+                            "color": "#1E8449" if count > 0 else "#E74C3C",
+                            "align": "center",
                         },
                     ],
                 },
-                {"type": "separator", "margin": "sm"},
-                # ETF 建議
                 {
                     "type": "text",
-                    "text": f"ETF 建議：{etf.get('action', '')} {etf.get('code', '') or ''}",
-                    "size": "sm",
-                    "weight": "bold",
-                    "color": "#2C3E50",
-                    "margin": "sm",
-                },
-                {
-                    "type": "text",
-                    "text": etf.get("reason", "")[:60],
+                    "text": "依評分由高至低排列，僅呈現評分 ≥ 70 分之個股",
                     "size": "xs",
-                    "color": "#666",
+                    "color": "#888",
                     "wrap": True,
+                    "margin": "md",
+                    "align": "center",
                 },
             ],
         },
@@ -429,11 +351,8 @@ def push_text(message: str) -> None:
     ))
 
 
-def push_surge_report(df_top10, market: dict) -> bool:
-    """
-    df_top10: surge_analyzer.main() 回傳的 DataFrame（已按 surge_score 降序）
-    market  : predict_market_trend() 結果
-    """
+def push_surge_report(df_top10) -> bool:
+    """df_top10: surge_analyzer.main() 回傳的 DataFrame（已按 surge_score 降序，僅含 ≥70 分）"""
     try:
         api     = _get_api()
         user_id = _get_user_id()
@@ -446,7 +365,7 @@ def push_surge_report(df_top10, market: dict) -> bool:
     date_str = datetime.now().strftime("%Y-%m-%d")
     rows = df_top10.to_dict(orient="records")
 
-    bubbles = [_market_bubble(market, date_str, len(rows))]
+    bubbles = [_summary_bubble(date_str, len(rows))]
     for rank, row in enumerate(rows, 1):
         bubbles.append(_stock_bubble(row, rank))
 
@@ -476,10 +395,10 @@ if __name__ == "__main__":
     from surge_analyzer import main as surge_main
 
     logger.info("► 執行 surge_analyzer...")
-    df_top10, _, market = surge_main()
+    df_top10, _ = surge_main()
 
     logger.info("► 推播至 LINE Bot...")
-    ok = push_surge_report(df_top10, market)
+    ok = push_surge_report(df_top10)
 
     print()
     print("推播結果:", "✅ 成功" if ok else "❌ 失敗")
