@@ -2,8 +2,8 @@ name: Daily Stock Analysis
 
 on:
   schedule:
-    # 每週一至週五 06:30 UTC（= 台灣時間 14:30，台股收盤後）
-    - cron: '30 6 * * 1-5'
+    # 每週一至週五 05:50 UTC（= 台灣時間 13:50，台股收盤後）
+    - cron: '50 5 * * 1-5'
   workflow_dispatch:  # 允許手動觸發
 
 jobs:
@@ -18,11 +18,15 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: pip
 
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run stock analysis
+      - name: Run stock analysis and LINE push
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_USER_ID:              ${{ secrets.LINE_USER_ID }}
         run: python surge_analyzer.py
 
       - name: Remove old reports (keep latest 10)

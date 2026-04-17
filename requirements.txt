@@ -2,3 +2,5 @@ requests
 pandas
 yfinance
 feedparser
+python-dotenv>=1.0.0
+line-bot-sdk>=3.0.0
