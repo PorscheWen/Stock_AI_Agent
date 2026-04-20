@@ -160,13 +160,25 @@ def _stock_bubble(row: dict, rank: int) -> dict:
                     "layout": "horizontal",
                     "contents": [
                         {
-                            "type": "text",
-                            "text": f"#{rank} {row['code']} {row.get('name', '')}",
-                            "size": "md",
-                            "weight": "bold",
-                            "color": "#FFFFFF",
+                            "type": "box",
+                            "layout": "vertical",
                             "flex": 1,
-                            "wrap": True,
+                            "contents": [
+                                {
+                                    "type": "text",
+                                    "text": f"#{rank} {row.get('name', row['code'])}",
+                                    "size": "md",
+                                    "weight": "bold",
+                                    "color": "#FFFFFF",
+                                    "wrap": True,
+                                },
+                                {
+                                    "type": "text",
+                                    "text": f"({row['code']})",
+                                    "size": "sm",
+                                    "color": "#FFFFFFcc",
+                                },
+                            ],
                         },
                         {
                             "type": "text",
