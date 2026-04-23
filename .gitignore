@@ -6,3 +6,5 @@ __pycache__/
 run_log.txt
 keyword_update_log.txt
 CLAUDE.md
+env-vars.yaml
+gcp-key.json

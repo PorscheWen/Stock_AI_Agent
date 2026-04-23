@@ -4,7 +4,7 @@
 
 set -e
 
-PROJECT_ID="your-gcp-project-id"       # ← 替換成你的 GCP Project ID
+PROJECT_ID="stock-ai-agent-prod"
 REGION="asia-east1"                      # 台灣最近節點（台灣）
 REPO="stock-ai"                          # Artifact Registry repo 名稱
 IMAGE="$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/stock-ai-agent:latest"
@@ -16,9 +16,10 @@ gcloud artifacts repositories create $REPO \
   --location=$REGION \
   --project=$PROJECT_ID 2>/dev/null || true
 
-echo "=== 建置並推送 Docker Image ==="
-docker build -t $IMAGE .
-docker push $IMAGE
+echo "=== 使用 Cloud Build 建置並推送 Docker Image ==="
+gcloud builds submit . \
+  --tag=$IMAGE \
+  --project=$PROJECT_ID
 
 echo "=== 部署 Cloud Run Job ==="
 gcloud run jobs deploy $JOB_NAME \
