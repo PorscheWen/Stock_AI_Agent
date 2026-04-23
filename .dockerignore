@@ -1,0 +1,10 @@
+.git
+__pycache__
+*.pyc
+*.pyo
+.env
+.env.*
+render.yaml
+tests/
+daily_run/
+*.md
