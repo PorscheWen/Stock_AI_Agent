@@ -14,6 +14,7 @@ import anthropic
 from config.settings import (
     ANTHROPIC_API_KEY,
     CLAUDE_MODEL,
+    CLAUDE_HAIKU,
     CONFIDENCE_THRESHOLD,
     MAX_STOP_LOSS_PCT,
     MIN_RISK_REWARD,
@@ -110,35 +111,24 @@ class ValidationAgent:
 
     def _check3_bear_case(self, c: dict) -> tuple[bool, list[str], str]:
         """③ 空方邏輯反駁（Claude 扮演放空者）"""
-        prompt = f"""你是嚴格的放空分析師，請對台股妖股 {c['symbol']} 提出 3 個最有力的做空論點。
-
-多方數據：
-- 連板天數：{c.get('consecutive_days', 0)} 板
-- 量比：{c.get('volume_ratio', 0):.1f}x
-- 動能評分：{c.get('momentum_score', 0):.0f}/100
-- 催化劑評分：{c.get('catalyst_score', 0):.0f}/100（題材：{c.get('catalyst_category', '不明')}）
-- 題材持續性：{c.get('catalyst_durability', '未知')}
-- 風報比：{c.get('risk_reward_ratio', 0):.1f}
-- 停損：{c.get('stop_loss_pct', 0):.1f}%
-
-請從以下角度提出反向論點：
-1. 技術面陷阱（高板數反轉風險）
-2. 題材面疑慮（催化劑真實性/持續性）
-3. 市場情緒風險（追高接刀風險）
-
-輸出格式（每行一條）：
-BEAR1: <論點>
-BEAR2: <論點>
-BEAR3: <論點>
-SEVERITY: <LOW|MEDIUM|HIGH>"""
+        prompt = (
+            f"{c['symbol']} 第{c.get('consecutive_days',0)}板 "
+            f"量比{c.get('volume_ratio',0):.1f}x "
+            f"動能{c.get('momentum_score',0):.0f} "
+            f"催化劑{c.get('catalyst_score',0):.0f}（{c.get('catalyst_category','')}） "
+            f"風報比{c.get('risk_reward_ratio',0):.1f} "
+            f"停損{c.get('stop_loss_pct',0):.1f}%\n"
+            "提出3個做空論點及整體嚴重度，格式：\n"
+            "BEAR1: <論點>\nBEAR2: <論點>\nBEAR3: <論點>\nSEVERITY: <LOW|MEDIUM|HIGH>"
+        )
 
         try:
             resp = client.messages.create(
-                model=CLAUDE_MODEL,
-                max_tokens=350,
+                model=CLAUDE_HAIKU,
+                max_tokens=180,
                 system=[{
                     "type": "text",
-                    "text": "你是台股操盤手，專門找出妖股的做空機會和散戶追高陷阱。請精準客觀分析。",
+                    "text": "台股放空分析師，找妖股弱點。僅輸出指定格式。",
                     "cache_control": {"type": "ephemeral"},
                 }],
                 messages=[{"role": "user", "content": prompt}],

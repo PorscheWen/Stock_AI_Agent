@@ -30,7 +30,7 @@ MOMENTUM_OPEN_BREAK_LIMIT = 2  # 漲停打開次數超過此值動能減弱
 MOMENTUM_MIN_SCORE        = 55 # 動能最低分數
 
 # ── 催化劑分析 ────────────────────────────────────────────
-CATALYST_MIN_SCORE  = 60   # 催化劑最低分數
+CATALYST_MIN_SCORE  = 50   # 催化劑最低分數
 CATALYST_CATEGORIES = {
     "policy":      "政策/法規受益",
     "earnings":    "業績驚喜/獲利大增",
@@ -65,8 +65,8 @@ EXIT_MAX_HOLD_DAYS   = 4     # 最大持倉天數（不超過4天）
 EXIT_PROFIT_TARGET   = 0.30  # 最高目標報酬 +30%
 
 # ── 驗證門檻 ──────────────────────────────────────────────
-CONFIDENCE_THRESHOLD   = 0.65  # 信心分數低於此值否決
-MIN_BOARD_COUNT        = 2     # 最少連板數（驗證層）
+CONFIDENCE_THRESHOLD   = 0.55  # 信心分數低於此值否決
+MIN_BOARD_COUNT        = 1     # 最少連板數（驗證層，對齊掃描層 MIN_CONSECUTIVE_DAYS）
 
 # ── 輸出設定 ──────────────────────────────────────────────
 REPORT_DIR = "reports"

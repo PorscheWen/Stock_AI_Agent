@@ -54,11 +54,14 @@ class CatalystAgent:
         self.name = "CatalystAgent"
 
     # ── 公開介面 ─────────────────────────────────────────
-    def run(self, symbols: list[str]) -> dict[str, CatalystResult]:
+    def run(
+        self, symbols: list[str], name_map: dict[str, str] | None = None
+    ) -> dict[str, CatalystResult]:
         results = {}
         for symbol in symbols:
             try:
-                result = self._analyze(symbol)
+                name = (name_map or {}).get(symbol)  # 使用真實公司名稱
+                result = self._analyze(symbol, name)
                 if result:
                     results[symbol] = result
                     logger.info(
@@ -107,26 +110,24 @@ class CatalystAgent:
         if not headlines:
             return 20.0, "unknown", "one-time", "無相關新聞，可能為純技術面炒作", "缺乏題材支撐"
 
-        headlines_text = "\n".join(f"- {h}" for h in headlines)
-        prompt = f"""分析台股 {symbol}（{name}）的漲停題材。
-
-相關新聞標題：
+        headlines_text = "\n".join(f"- {h}" for h in headlines[:5])
+        prompt = f"""台股 {symbol}（{name}）漲停題材分析，新聞：
 {headlines_text}
 
-請評估並輸出以下格式（每行一個）：
-SCORE: <0-100，題材說服力，100=業績爆發/重大政策，20=無明確題材>
+嚴格按此格式輸出5行，不加其他內容：
+SCORE: <0-100整數>
 CATEGORY: <policy|earnings|supply_chain|concept|turnaround|unknown>
-DURABILITY: <long|short|one-time>（long=超過1個月持續，short=1-4週，one-time=單日事件）
-SUMMARY: <一句話說明題材內容，不超過50字>
-WARNING: <潛在風險，無則填 無>"""
+DURATION: <long|short|one-time>
+SUMMARY: <20字內>
+WARNING: <15字內，無風險填無>"""
 
         try:
             resp = client.messages.create(
                 model=CLAUDE_HAIKU,
-                max_tokens=200,
+                max_tokens=120,
                 system=[{
                     "type": "text",
-                    "text": "你是台股題材分析師，善於判斷漲停股背後的驅動力是否真實可持續。請精簡輸出。",
+                    "text": "台股題材分析師，判斷漲停驅動力。僅輸出指定格式。",
                     "cache_control": {"type": "ephemeral"},
                 }],
                 messages=[{"role": "user", "content": prompt}],
@@ -140,25 +141,30 @@ WARNING: <潛在風險，無則填 無>"""
             warning   = ""
 
             for line in text.split("\n"):
-                line = line.strip()
-                if line.startswith("SCORE:"):
+                # 去除 markdown 粗體（**SCORE:**）與前後空白
+                line = re.sub(r"\*+", "", line).strip()
+                if re.match(r"SCORE:", line, re.IGNORECASE):
                     try:
                         score = float(re.search(r"\d+", line).group())
                     except Exception:
                         pass
-                elif line.startswith("CATEGORY:"):
-                    cat = line.split(":", 1)[1].strip().lower()
-                    if cat in CATALYST_CATEGORIES:
-                        category = cat
-                elif line.startswith("DURABILITY:"):
+                elif re.match(r"CATEGORY:", line, re.IGNORECASE):
+                    # 取第一個有效類別（防止 concept|earnings 多值）
+                    cat_raw = line.split(":", 1)[1].strip().lower()
+                    for cat_token in re.split(r"[|,/\s]+", cat_raw):
+                        cat_token = cat_token.strip()
+                        if cat_token in CATALYST_CATEGORIES:
+                            category = cat_token
+                            break
+                elif re.match(r"DURAB|DURATION", line, re.IGNORECASE):
                     dur = line.split(":", 1)[1].strip().lower()
                     if dur in ("long", "short", "one-time"):
                         durability = dur
-                elif line.startswith("SUMMARY:"):
+                elif re.match(r"SUMMARY:", line, re.IGNORECASE):
                     summary = line.split(":", 1)[1].strip()
-                elif line.startswith("WARNING:"):
+                elif re.match(r"WARNING:", line, re.IGNORECASE):
                     w = line.split(":", 1)[1].strip()
-                    warning = "" if w == "無" else w
+                    warning = "" if w in ("無", "none", "-") else w
 
             return score, category, durability, summary, warning
 
@@ -166,10 +172,10 @@ WARNING: <潛在風險，無則填 無>"""
             logger.warning(f"[Catalyst] Claude 呼叫失敗：{e}")
             return 40.0, "unknown", "one-time", "題材分析失敗", str(e)
 
-    def _analyze(self, symbol: str) -> Optional[CatalystResult]:
+    def _analyze(self, symbol: str, name: str | None = None) -> Optional[CatalystResult]:
         # 從 symbol 拆解代號與名稱
         code = symbol.replace(".TW", "").replace(".TWO", "")
-        name = code  # 若有名稱對照表可替換
+        name = name or code  # 優先使用傳入的公司名稱
 
         headlines = self._fetch_news(code, name)
         score, category, durability, summary, warning = self._claude_evaluate(

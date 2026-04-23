@@ -15,6 +15,30 @@ from datetime import datetime
 
 from agents.orchestrator import OrchestratorAgent
 
+
+def _validate_api_key() -> None:
+    """啟動時驗證 Anthropic API 金鑰格式"""
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+    key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not key:
+        print(
+            "錯誤：ANTHROPIC_API_KEY 未設定，請在 .env 中填入有效的 API 金鑰",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    try:
+        key.encode("ascii")
+    except UnicodeEncodeError:
+        print(
+            "錯誤：ANTHROPIC_API_KEY 包含非 ASCII 字元（可能仍為中文佔位符）。\n"
+            "請至 https://console.anthropic.com/ 取得 API 金鑰（格式：sk-ant-...）\n"
+            "並更新 .env 中的 ANTHROPIC_API_KEY",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
 # ── 日誌設定 ────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -120,6 +144,7 @@ def main() -> None:
         # JSON-only 模式：關閉 log
         logging.disable(logging.CRITICAL)
 
+    # 先驗日期格式（不需 API 金鑰）
     date_str = args.date
     if date_str:
         try:
@@ -127,6 +152,9 @@ def main() -> None:
         except ValueError:
             print(f"錯誤：日期格式錯誤，請使用 YYYYMMDD，例如 20241218", file=sys.stderr)
             sys.exit(1)
+
+    # 再驗 API 金鑰（分析前必須有效）
+    _validate_api_key()
 
     orchestrator = OrchestratorAgent()
 

@@ -67,13 +67,14 @@ class OrchestratorAgent:
         symbols    = [s.symbol for s in scan_results]
         scan_map   = {s.symbol: s for s in scan_results}
         board_map  = {s.symbol: s.consecutive_days for s in scan_results}
+        name_map   = {s.symbol: s.name for s in scan_results}  # 公司名稱對照
 
         logger.info(f"[Step 1] 發現 {len(symbols)} 檔候選：{symbols}")
 
         # Step 2 — 並行分析（Momentum + Catalyst + Risk）
         logger.info("[Step 2] 並行：動能 / 催化劑 / 風控")
         momentum_map, catalyst_map, risk_map = self._parallel_analysis(
-            symbols, board_map
+            symbols, board_map, name_map
         )
 
         # Step 3 — 整合候選資料
@@ -130,22 +131,20 @@ class OrchestratorAgent:
         self,
         symbols: list[str],
         board_map: dict[str, int],
+        name_map: dict[str, str] | None = None,
     ) -> tuple[dict, dict, dict]:
         momentum_map: dict = {}
         catalyst_map: dict = {}
         risk_map: dict     = {}
 
         def run_momentum():
-            results = self.momentum.run(symbols)
-            return {r.symbol: r for r in results}
+            return self.momentum.run(symbols)  # 已回傳 dict[str, MomentumResult]
 
         def run_catalyst():
-            results = self.catalyst.run(symbols)
-            return {r.symbol: r for r in results}
+            return self.catalyst.run(symbols, name_map)  # 已回傳 dict[str, CatalystResult]
 
         def run_risk():
-            results = self.risk.run(symbols, board_map)
-            return {r.symbol: r for r in results}
+            return self.risk.run(symbols, board_map)  # 已回傳 dict[str, RiskResult]
 
         tasks = {
             "momentum": run_momentum,
@@ -281,19 +280,18 @@ class OrchestratorAgent:
             f"信心{s['scores']['confidence']:.0f}% 題材:{s['catalyst']['category']}"
             for s in stocks[:5]
         ]
-        prompt = f"""今日 {date_str} 妖股報告，共 {len(stocks)} 檔通過三重驗證：
+        prompt = f"""今日 {date_str} 共 {len(stocks)} 檔妖股通過驗證：
 {chr(10).join(top)}
 
-請以台股操盤手的口吻，用 2-3 段，100-150 字（繁體中文）分析今日妖股機會，
-涵蓋：市場氛圍、最強妖股看法、操作建議（板數進場、止損紀律）。"""
+用80字（繁體中文）說明：市場氛圍、最強標的、操作要點。"""
 
         try:
             resp = client.messages.create(
                 model=CLAUDE_MODEL,
-                max_tokens=400,
+                max_tokens=200,
                 system=[{
                     "type": "text",
-                    "text": "你是台股資深操盤手，熟悉妖股板塊操作，語氣專業且實用。",
+                    "text": "台股操盤手，精簡專業。",
                     "cache_control": {"type": "ephemeral"},
                 }],
                 messages=[{"role": "user", "content": prompt}],
