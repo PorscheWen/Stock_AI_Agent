@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 *.pyo
 run_log.txt
+keyword_update_log.txt
