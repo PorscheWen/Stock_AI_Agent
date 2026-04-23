@@ -1,0 +1,20 @@
+services:
+  # Cron job：每個交易日台灣時間 14:30 執行妖股分析並推播至 LINE
+  - type: cron
+    name: StockAgent_Afternoon_Push
+    runtime: python
+    region: singapore
+    plan: free
+    branch: main
+    schedule: "30 6 * * 1-5"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: LINE_CHANNEL_SECRET
+        sync: false
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        sync: false
+      - key: LINE_USER_ID
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
