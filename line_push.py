@@ -114,7 +114,7 @@ def _summary_bubble(date_str: str, count: int) -> dict:
                     "paddingAll": "16px",
                     "cornerRadius": "8px",
                     "contents": [
-                        {"type": "text", "text": "今日精選（評分 ≥ 70）", "size": "xs", "color": "#888", "align": "center"},
+                        {"type": "text", "text": "今日精選（評分 ≥ 70）", "size": "xs", "color": "#888888", "align": "center"},
                         {
                             "type": "text",
                             "text": f"{count} 檔" if count > 0 else "今日無符合",
@@ -129,7 +129,7 @@ def _summary_bubble(date_str: str, count: int) -> dict:
                     "type": "text",
                     "text": "依評分由高至低排列，僅呈現評分 ≥ 70 分之個股",
                     "size": "xs",
-                    "color": "#888",
+                    "color": "#888888",
                     "wrap": True,
                     "margin": "md",
                     "align": "center",
@@ -193,7 +193,7 @@ def _stock_bubble(row: dict, rank: int) -> dict:
                                     "type": "text",
                                     "text": f"({row['code']})",
                                     "size": "sm",
-                                    "color": "#FFFFFFcc",
+                                    "color": "#FFFFFF",
                                 },
                             ],
                         },
@@ -235,7 +235,7 @@ def _stock_bubble(row: dict, rank: int) -> dict:
                             "layout": "vertical",
                             "flex": 1,
                             "contents": [
-                                {"type": "text", "text": "RSI", "size": "xs", "color": "#888"},
+                                {"type": "text", "text": "RSI", "size": "xs", "color": "#888888"},
                                 {"type": "text", "text": f"{row['rsi']:.1f}", "size": "md", "weight": "bold"},
                             ],
                         },
@@ -244,7 +244,7 @@ def _stock_bubble(row: dict, rank: int) -> dict:
                             "layout": "vertical",
                             "flex": 1,
                             "contents": [
-                                {"type": "text", "text": "MACD", "size": "xs", "color": "#888"},
+                                {"type": "text", "text": "MACD", "size": "xs", "color": "#888888"},
                                 {
                                     "type": "text",
                                     "text": macd_str,
@@ -259,7 +259,7 @@ def _stock_bubble(row: dict, rank: int) -> dict:
                             "layout": "vertical",
                             "flex": 1,
                             "contents": [
-                                {"type": "text", "text": "量比", "size": "xs", "color": "#888"},
+                                {"type": "text", "text": "量比", "size": "xs", "color": "#888888"},
                                 {
                                     "type": "text",
                                     "text": f"{row['vol_ratio']:.1f}x",
@@ -274,7 +274,7 @@ def _stock_bubble(row: dict, rank: int) -> dict:
                             "layout": "vertical",
                             "flex": 1,
                             "contents": [
-                                {"type": "text", "text": "均線", "size": "xs", "color": "#888"},
+                                {"type": "text", "text": "均線", "size": "xs", "color": "#888888"},
                                 {
                                     "type": "text",
                                     "text": "多頭" if "多頭" in ma_trend else "空頭",
@@ -293,7 +293,7 @@ def _stock_bubble(row: dict, rank: int) -> dict:
                     "layout": "horizontal",
                     "margin": "xs",
                     "contents": [
-                        {"type": "text", "text": "外資", "size": "xs", "color": "#888", "flex": 1},
+                        {"type": "text", "text": "外資", "size": "xs", "color": "#888888", "flex": 1},
                         {
                             "type": "text",
                             "text": foreign_str,
@@ -301,7 +301,7 @@ def _stock_bubble(row: dict, rank: int) -> dict:
                             "flex": 2,
                             "color": "#27AE60" if isinstance(row.get("foreign"), (int, float)) and row["foreign"] > 0 else "#E74C3C",
                         },
-                        {"type": "text", "text": "投信", "size": "xs", "color": "#888", "flex": 1},
+                        {"type": "text", "text": "投信", "size": "xs", "color": "#888888", "flex": 1},
                         {
                             "type": "text",
                             "text": trust_str,
@@ -343,7 +343,7 @@ def _stock_bubble(row: dict, rank: int) -> dict:
                             "layout": "vertical",
                             "flex": 1,
                             "contents": [
-                                {"type": "text", "text": "5日漲幅", "size": "xs", "color": "#888"},
+                                {"type": "text", "text": "5日漲幅", "size": "xs", "color": "#888888"},
                                 {
                                     "type": "text",
                                     "text": f"{row['ret5']:+.1f}%",
@@ -364,7 +364,7 @@ def _stock_bubble(row: dict, rank: int) -> dict:
             "backgroundColor": "#F2F3F4",
             "contents": [
                 {"type": "text", "text": label, "size": "sm", "weight": "bold", "color": color, "flex": 1},
-                {"type": "text", "text": f"成交 {row['volume_lots']:,} 張", "size": "xs", "color": "#888", "align": "end"},
+                {"type": "text", "text": f"成交 {row['volume_lots']:,} 張", "size": "xs", "color": "#888888", "align": "end"},
             ],
         },
     }
