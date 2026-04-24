@@ -158,7 +158,19 @@ def _exit_strategy(tgt_pct: float, stop_pct: float) -> str:
 
 
 # ── 摘要 Bubble ───────────────────────────────────────
-def _summary_bubble(date_str: str, count: int) -> dict:
+def _summary_bubble(date_str: str, count: int, batch_info: str = None) -> dict:
+    """建立摘要 bubble
+    
+    Args:
+        date_str: 日期字串
+        count: 本批次股票數量
+        batch_info: 批次資訊，例如 "1/3" 表示第 1 批，共 3 批
+    """
+    # 標題顯示批次資訊（如果有）
+    title_text = "🇹🇼 台股暴漲潛力報告"
+    if batch_info:
+        title_text = f"🇹🇼 暴漲潛力 [{batch_info}]"
+    
     return {
         "type": "bubble",
         "size": "mega",
@@ -168,7 +180,7 @@ def _summary_bubble(date_str: str, count: int) -> dict:
             "backgroundColor": "#00695C",
             "paddingAll": "16px",
             "contents": [
-                {"type": "text", "text": "🇹🇼 台股暴漲潛力報告", "size": "lg", "weight": "bold", "color": "#FFFFFF"},
+                {"type": "text", "text": title_text, "size": "lg", "weight": "bold", "color": "#FFFFFF"},
                 {"type": "text", "text": date_str, "size": "sm", "color": "#B2DFDB", "margin": "xs"},
             ],
         },
@@ -185,7 +197,7 @@ def _summary_bubble(date_str: str, count: int) -> dict:
                     "paddingAll": "16px",
                     "cornerRadius": "8px",
                     "contents": [
-                        {"type": "text", "text": "今日精選（評分 ≥ 90）", "size": "xs", "color": "#555555", "align": "center"},
+                        {"type": "text", "text": "本批精選（評分 ≥ 70）", "size": "xs", "color": "#555555", "align": "center"},
                         {
                             "type": "text",
                             "text": f"{count} 檔" if count > 0 else "今日無符合",
@@ -198,7 +210,7 @@ def _summary_bubble(date_str: str, count: int) -> dict:
                 },
                 {
                     "type": "text",
-                    "text": "依評分由高至低排列，僅呈現評分 ≥ 90 分之個股",
+                    "text": "依評分由高至低排列，僅呈現評分 ≥ 70 分之個股",
                     "size": "xs",
                     "color": "#777777",
                     "wrap": True,
@@ -587,7 +599,10 @@ def push_text(message: str) -> None:
 
 
 def push_surge_report(df_top10) -> bool:
-    """df_top10: surge_analyzer.main() 回傳的 DataFrame（已按 surge_score 降序，僅含 ≥90 分）"""
+    """df_top10: surge_analyzer.main() 回傳的 DataFrame（已按 surge_score 降序，僅含 ≥90 分）
+    
+    為避免超過 LINE 50 KB 限制，將股票分批發送，每批最多 4 檔股票。
+    """
     try:
         api      = _get_api()
         user_ids = _get_user_ids()
@@ -596,28 +611,55 @@ def push_surge_report(df_top10) -> bool:
         return False
 
     from linebot.v3.messaging import PushMessageRequest, FlexMessage, FlexContainer
+    import json
 
     date_str = datetime.now().strftime("%Y-%m-%d")
     rows = df_top10.to_dict(orient="records")
-
-    bubbles = [_summary_bubble(date_str, len(rows))]
-    for rank, row in enumerate(rows, 1):
-        bubbles.append(_stock_bubble(row, rank))
-
-    carousel = {"type": "carousel", "contents": bubbles[:12]}
-    msg = FlexMessage(
-        alt_text=f"🇹🇼 台股暴漲潛力 TOP{len(rows)} — {date_str}",
-        contents=FlexContainer.from_dict(carousel),
-    )
-
+    
+    # 每批最多 4 檔股票（避免超過 50 KB）
+    BATCH_SIZE = 4
+    total_stocks = len(rows)
+    
     success_count = 0
     for uid in user_ids:
         try:
-            api.push_message(
-                PushMessageRequest(to=uid, messages=[msg])
-            )
-            logger.info("[LINE] 推播成功 → %s  TOP %d", uid, len(rows))
+            # 分批發送
+            for batch_idx in range(0, total_stocks, BATCH_SIZE):
+                batch_rows = rows[batch_idx:batch_idx + BATCH_SIZE]
+                batch_num = (batch_idx // BATCH_SIZE) + 1
+                total_batches = (total_stocks + BATCH_SIZE - 1) // BATCH_SIZE
+                
+                # 建立摘要 bubble（顯示當前批次資訊）
+                batch_info = f"{batch_num}/{total_batches}" if total_batches > 1 else None
+                bubbles = [_summary_bubble(date_str, len(batch_rows), batch_info)]
+                
+                # 加入股票 bubbles
+                for row in batch_rows:
+                    rank = rows.index(row) + 1
+                    bubbles.append(_stock_bubble(row, rank))
+                
+                carousel = {"type": "carousel", "contents": bubbles}
+                
+                # 檢查大小（可選，用於除錯）
+                carousel_json = json.dumps(carousel, ensure_ascii=False)
+                size_kb = len(carousel_json.encode('utf-8')) / 1024
+                logger.info("[LINE] 批次 %d/%d - 大小: %.1f KB, 股票數: %d", 
+                           batch_num, total_batches, size_kb, len(batch_rows))
+                
+                msg = FlexMessage(
+                    alt_text=f"🇹🇼 台股暴漲潛力 ({batch_num}/{total_batches}) — {date_str}",
+                    contents=FlexContainer.from_dict(carousel),
+                )
+                
+                # 發送當前批次
+                api.push_message(
+                    PushMessageRequest(to=uid, messages=[msg])
+                )
+            
+            logger.info("[LINE] 推播成功 → %s  TOP %d (共 %d 批)", 
+                       uid, total_stocks, total_batches)
             success_count += 1
+            
         except Exception as e:
             logger.error("[LINE] 推播失敗 → %s : %s", uid, e)
 
