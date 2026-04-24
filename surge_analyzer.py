@@ -437,11 +437,11 @@ def main(
     report_path.write_text(_build_report(df_top10, date_str, sample_n), encoding="utf-8")
     logger.info(f"[Step 6] 報告已儲存：{report_path}")
 
-    # Step 7：LINE 推播（評分 ≥ 70 的個股）
+    # Step 7：LINE 推播（評分 ≥ 90 的個股）
     if enable_line:
         df_push = df_top10[df_top10["surge_score"] >= 70]
         if not df_push.empty:
-            logger.info(f"[Step 7] 推播 {len(df_push)} 檔至 LINE...")
+            logger.info("[Step 7] 推播 %d 檔至 LINE...", len(df_push))
             from line_push import push_surge_report
             ok = push_surge_report(df_push)
             if ok:
