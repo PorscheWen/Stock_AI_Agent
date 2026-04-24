@@ -1,6 +1,6 @@
 """
 📲 LINE PUSH — Stock_AI_agent
-將暴漲潛力 TOP 10 以 Flex Carousel 推播至 LINE
+將台股妖股偵測 TOP 6 以 Flex Carousel 推播至 LINE
 Carousel 順序：評分由高到低（左→右）
 """
 import sys
@@ -167,9 +167,9 @@ def _summary_bubble(date_str: str, count: int, batch_info: str = None) -> dict:
         batch_info: 批次資訊，例如 "1/3" 表示第 1 批，共 3 批
     """
     # 標題顯示批次資訊（如果有）
-    title_text = "🇹🇼 台股暴漲潛力報告"
+    title_text = "🇹🇼 台股妖股偵測"
     if batch_info:
-        title_text = f"🇹🇼 暴漲潛力 [{batch_info}]"
+        title_text = f"🇹🇼 妖股偵測 [{batch_info}]"
     
     return {
         "type": "bubble",
@@ -601,7 +601,7 @@ def push_text(message: str) -> None:
 def push_surge_report(df_top10) -> bool:
     """df_top10: surge_analyzer.main() 回傳的 DataFrame（已按 surge_score 降序，僅含 ≥90 分）
     
-    為避免超過 LINE 50 KB 限制，將股票分批發送，每批最多 4 檔股票。
+    限制最多推薦六檔股票，為避免超過 LINE 50 KB 限制，將股票分批發送，每批最多 4 檔股票。
     """
     try:
         api      = _get_api()
@@ -614,7 +614,10 @@ def push_surge_report(df_top10) -> bool:
     import json
 
     date_str = datetime.now().strftime("%Y-%m-%d")
-    rows = df_top10.to_dict(orient="records")
+    
+    # 限制最多推薦六檔股票
+    df_limited = df_top10.head(6)
+    rows = df_limited.to_dict(orient="records")
     
     # 每批最多 4 檔股票（避免超過 50 KB）
     BATCH_SIZE = 4
@@ -647,7 +650,7 @@ def push_surge_report(df_top10) -> bool:
                            batch_num, total_batches, size_kb, len(batch_rows))
                 
                 msg = FlexMessage(
-                    alt_text=f"🇹🇼 台股暴漲潛力 ({batch_num}/{total_batches}) — {date_str}",
+                    alt_text=f"🇹🇼 台股妖股偵測 ({batch_num}/{total_batches}) — {date_str}",
                     contents=FlexContainer.from_dict(carousel),
                 )
                 
