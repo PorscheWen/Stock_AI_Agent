@@ -450,7 +450,7 @@ def main(
                 else:
                     logger.error(
                         "[Step 7] LINE 推播失敗！"
-                        "請確認 GitHub Secrets 已設定：LINE_CHANNEL_ACCESS_TOKEN、LINE_USER_ID"
+                        "請確認 GitHub Secrets 已設定：CHANNEL_STOCK_ACCESS_TOKEN、CHANNEL_STOCK_USER_ID"
                     )
             except Exception as e:
                 logger.error(f"[Step 7] LINE 推播例外：{e}", exc_info=True)

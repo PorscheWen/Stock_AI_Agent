@@ -19,41 +19,29 @@ logging.basicConfig(level=logging.INFO,
 
 
 def _get_api():
-    # 依序嘗試：LINE_CHANNEL_ACCESS_TOKEN → CHANNEL_STOCK_ACCESS_TOKEN
-    token = (
-        os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
-        or os.environ.get("CHANNEL_STOCK_ACCESS_TOKEN", "")
-    )
+    token = os.environ.get("CHANNEL_STOCK_ACCESS_TOKEN", "")
     if not token:
         raise RuntimeError(
-            "LINE Channel Access Token 未設定，"
-            "請在 GitHub Secrets 加入 LINE_CHANNEL_ACCESS_TOKEN"
+            "CHANNEL_STOCK_ACCESS_TOKEN 未設定，"
+            "請至 GitHub Settings > Secrets and variables > Actions 新增"
         )
     from linebot.v3.messaging import MessagingApi, ApiClient, Configuration
     return MessagingApi(ApiClient(Configuration(access_token=token)))
 
 
 def _get_user_ids() -> list[str]:
-    """支援單人（LINE_USER_ID）與多人（LINE_USER_IDS 逗號分隔）設定"""
-    # 多人設定（逗號分隔）
-    multi = (
-        os.environ.get("LINE_USER_IDS", "")
-        or os.environ.get("CHANNEL_STOCK_USER_IDS", "")
-    )
+    """支援多人（CHANNEL_STOCK_USER_IDS 逗號分隔）與單人（CHANNEL_STOCK_USER_ID）"""
+    multi = os.environ.get("CHANNEL_STOCK_USER_IDS", "")
     if multi:
         ids = [u.strip() for u in multi.split(",") if u.strip()]
         if ids:
             return ids
-    # 單人設定
-    single = (
-        os.environ.get("LINE_USER_ID", "")
-        or os.environ.get("CHANNEL_STOCK_USER_ID", "")
-    )
+    single = os.environ.get("CHANNEL_STOCK_USER_ID", "")
     if single:
         return [single]
     raise RuntimeError(
-        "LINE User ID 未設定，"
-        "請在 GitHub Secrets 加入 LINE_USER_ID（或多人用 LINE_USER_IDS）"
+        "CHANNEL_STOCK_USER_ID 未設定，"
+        "請至 GitHub Settings > Secrets and variables > Actions 新增"
     )
 
 
