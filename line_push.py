@@ -19,18 +19,47 @@ logging.basicConfig(level=logging.INFO,
 
 
 def _get_api():
-    token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
+    # 依序嘗試：LINE_CHANNEL_ACCESS_TOKEN → CHANNEL_STOCK_ACCESS_TOKEN
+    token = (
+        os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
+        or os.environ.get("CHANNEL_STOCK_ACCESS_TOKEN", "")
+    )
     if not token:
-        raise RuntimeError("LINE_CHANNEL_ACCESS_TOKEN 未設定")
+        raise RuntimeError(
+            "LINE Channel Access Token 未設定，"
+            "請在 GitHub Secrets 加入 LINE_CHANNEL_ACCESS_TOKEN"
+        )
     from linebot.v3.messaging import MessagingApi, ApiClient, Configuration
     return MessagingApi(ApiClient(Configuration(access_token=token)))
 
 
+def _get_user_ids() -> list[str]:
+    """支援單人（LINE_USER_ID）與多人（LINE_USER_IDS 逗號分隔）設定"""
+    # 多人設定（逗號分隔）
+    multi = (
+        os.environ.get("LINE_USER_IDS", "")
+        or os.environ.get("CHANNEL_STOCK_USER_IDS", "")
+    )
+    if multi:
+        ids = [u.strip() for u in multi.split(",") if u.strip()]
+        if ids:
+            return ids
+    # 單人設定
+    single = (
+        os.environ.get("LINE_USER_ID", "")
+        or os.environ.get("CHANNEL_STOCK_USER_ID", "")
+    )
+    if single:
+        return [single]
+    raise RuntimeError(
+        "LINE User ID 未設定，"
+        "請在 GitHub Secrets 加入 LINE_USER_ID（或多人用 LINE_USER_IDS）"
+    )
+
+
 def _get_user_id() -> str:
-    uid = os.environ.get("LINE_USER_ID", "")
-    if not uid:
-        raise RuntimeError("LINE_USER_ID 未設定")
-    return uid
+    """向下相容：回傳第一個 user id"""
+    return _get_user_ids()[0]
 
 
 # ── 配色：依評分高低 ───────────────────────────────────
@@ -366,10 +395,10 @@ def push_text(message: str) -> None:
 def push_surge_report(df_top10) -> bool:
     """df_top10: surge_analyzer.main() 回傳的 DataFrame（已按 surge_score 降序，僅含 ≥70 分）"""
     try:
-        api     = _get_api()
-        user_id = _get_user_id()
+        api      = _get_api()
+        user_ids = _get_user_ids()
     except RuntimeError as e:
-        logger.warning("[LINE] %s，跳過推播", e)
+        logger.error("[LINE] 設定錯誤 → %s", e)
         return False
 
     from linebot.v3.messaging import PushMessageRequest, FlexMessage, FlexContainer
@@ -382,24 +411,23 @@ def push_surge_report(df_top10) -> bool:
         bubbles.append(_stock_bubble(row, rank))
 
     carousel = {"type": "carousel", "contents": bubbles[:12]}
+    msg = FlexMessage(
+        alt_text=f"🇹🇼 台股暴漲潛力 TOP{len(rows)} — {date_str}",
+        contents=FlexContainer.from_dict(carousel),
+    )
 
-    try:
-        api.push_message(
-            PushMessageRequest(
-                to=user_id,
-                messages=[
-                    FlexMessage(
-                        alt_text=f"🇹🇼 台股暴漲潛力 TOP{len(rows)} — {date_str}",
-                        contents=FlexContainer.from_dict(carousel),
-                    )
-                ],
+    success_count = 0
+    for uid in user_ids:
+        try:
+            api.push_message(
+                PushMessageRequest(to=uid, messages=[msg])
             )
-        )
-        logger.info("[LINE] 推播成功：TOP %d 暴漲潛力股", len(rows))
-        return True
-    except Exception as e:
-        logger.error("[LINE] 推播失敗: %s", e)
-        return False
+            logger.info("[LINE] 推播成功 → %s  TOP %d", uid, len(rows))
+            success_count += 1
+        except Exception as e:
+            logger.error("[LINE] 推播失敗 → %s : %s", uid, e)
+
+    return success_count > 0
 
 
 # ── 直接執行：分析 + 推播 ──────────────────────────────

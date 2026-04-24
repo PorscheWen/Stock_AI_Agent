@@ -31,8 +31,20 @@ jobs:
         env:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
           LINE_USER_ID:              ${{ secrets.LINE_USER_ID }}
+          LINE_USER_IDS:             ${{ secrets.LINE_USER_IDS }}
           ANTHROPIC_API_KEY:         ${{ secrets.ANTHROPIC_API_KEY }}
-        run: python surge_analyzer.py
+        run: |
+          echo "🔑 檢查 LINE Secrets..."
+          if [ -z "$LINE_CHANNEL_ACCESS_TOKEN" ]; then
+            echo "::error::LINE_CHANNEL_ACCESS_TOKEN 未設定！請至 Settings > Secrets and variables > Actions 新增"
+            exit 1
+          fi
+          if [ -z "$LINE_USER_ID" ] && [ -z "$LINE_USER_IDS" ]; then
+            echo "::error::LINE_USER_ID（或 LINE_USER_IDS）未設定！請至 Settings > Secrets and variables > Actions 新增"
+            exit 1
+          fi
+          echo "✅ Secrets 驗證通過，開始分析..."
+          python surge_analyzer.py
 
       - name: Remove old reports (keep latest 10)
         run: |

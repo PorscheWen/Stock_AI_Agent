@@ -444,11 +444,19 @@ def main(
             logger.info(f"[Step 7] 推播 {len(df_push)} 檔至 LINE...")
             try:
                 from line_push import push_surge_report
-                push_surge_report(df_push)
+                ok = push_surge_report(df_push)
+                if ok:
+                    logger.info("[Step 7] LINE 推播成功")
+                else:
+                    logger.error(
+                        "[Step 7] LINE 推播失敗！"
+                        "請確認 GitHub Secrets 已設定：LINE_CHANNEL_ACCESS_TOKEN、LINE_USER_ID"
+                    )
             except Exception as e:
-                logger.warning(f"[Step 7] LINE 推播失敗：{e}")
+                logger.error(f"[Step 7] LINE 推播例外：{e}", exc_info=True)
         else:
-            logger.info("[Step 7] 無評分 ≥ 70 的股票，跳過 LINE 推播")
+            logger.info("[Step 7] 無評分 ≥ 70 的股票，跳過 LINE 推播（最高分：%s）",
+                        df_top10.iloc[0]["surge_score"] if not df_top10.empty else "N/A")
 
     return df_top10, str(report_path)
 
