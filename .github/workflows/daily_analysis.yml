@@ -27,6 +27,39 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Test LINE connection
+        env:
+          CHANNEL_STOCK_ACCESS_TOKEN: ${{ secrets.CHANNEL_STOCK_ACCESS_TOKEN }}
+          CHANNEL_STOCK_USER_ID:      ${{ secrets.CHANNEL_STOCK_USER_ID }}
+          CHANNEL_STOCK_SECRET:       ${{ secrets.CHANNEL_STOCK_SECRET }}
+        run: |
+          python - <<'EOF'
+          import os, sys
+          from linebot.v3.messaging import (
+              MessagingApi, ApiClient, Configuration,
+              PushMessageRequest, TextMessage
+          )
+          token = os.environ.get("CHANNEL_STOCK_ACCESS_TOKEN", "")
+          uid   = os.environ.get("CHANNEL_STOCK_USER_ID", "")
+          if not token:
+              print("::error::CHANNEL_STOCK_ACCESS_TOKEN 為空")
+              sys.exit(1)
+          if not uid:
+              print("::error::CHANNEL_STOCK_USER_ID 為空")
+              sys.exit(1)
+          print(f"TOKEN prefix: {token[:8]}...  UID: {uid[:6]}...")
+          try:
+              api = MessagingApi(ApiClient(Configuration(access_token=token)))
+              api.push_message(PushMessageRequest(
+                  to=uid,
+                  messages=[TextMessage(text="🔔 Stock_AI_Agent 自動分析即將開始，請稍候...")]
+              ))
+              print("✅ LINE 測試推播成功")
+          except Exception as e:
+              print(f"::error::LINE 推播失敗：{e}")
+              sys.exit(1)
+          EOF
+
       - name: Run stock analysis and LINE push
         env:
           CHANNEL_STOCK_ACCESS_TOKEN: ${{ secrets.CHANNEL_STOCK_ACCESS_TOKEN }}
