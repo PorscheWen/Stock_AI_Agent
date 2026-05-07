@@ -106,7 +106,7 @@ class OrchestratorAgent:
             approved_stocks,
             key=lambda s: (s["scores"]["recommendation"], s.get("volume", 0)),
             reverse=True,
-        )[:4]
+        )[:8]
 
         # Step 7 — Claude Opus 口語總結
         logger.info("[Step 7] Claude Opus 生成總結")
@@ -312,7 +312,7 @@ class OrchestratorAgent:
         top = [
             f"{s['symbol']} {s['name']} 第{s['consecutive_days']}板 "
             f"信心{s['scores']['confidence']:.0f}% 題材:{s['catalyst']['category']}"
-            for s in stocks[:4]
+            for s in stocks[:8]
         ]
         prompt = f"""今日 {date_str} 共 {len(stocks)} 檔妖股通過驗證：
 {chr(10).join(top)}
