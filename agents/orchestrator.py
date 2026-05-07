@@ -104,7 +104,7 @@ class OrchestratorAgent:
         ]
         approved_stocks = sorted(
             approved_stocks,
-            key=lambda s: s["scores"]["recommendation"],
+            key=lambda s: (s["scores"]["recommendation"], s.get("volume", 0)),
             reverse=True,
         )[:4]
 
@@ -198,6 +198,7 @@ class OrchestratorAgent:
                 "name"           : sr.name,
                 "close"          : sr.close,
                 "pct_change"     : sr.pct_change,
+                "volume"         : sr.volume,
                 "volume_ratio"   : sr.volume_ratio,
                 "consecutive_days": sr.consecutive_days,
                 # Momentum
@@ -258,6 +259,7 @@ class OrchestratorAgent:
             "name"           : c["name"],
             "close"          : c["close"],
             "pct_change"     : c["pct_change"],
+            "volume"         : c["volume"],
             "volume_ratio"   : c["volume_ratio"],
             "consecutive_days": c["consecutive_days"],
             "scores": {
