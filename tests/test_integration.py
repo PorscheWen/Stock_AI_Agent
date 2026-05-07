@@ -45,6 +45,7 @@ class TestMainScript(unittest.TestCase):
             from agents.risk_agent import RiskAgent
             from agents.entry_agent import EntryAgent
             from agents.exit_agent import ExitAgent
+            from agents.operation_advice_agent import OperationAdviceAgent
             from agents.validation_agent import ValidationAgent
             from agents.orchestrator import OrchestratorAgent
             

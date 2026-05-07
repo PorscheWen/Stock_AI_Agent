@@ -12,6 +12,7 @@ from agents.catalyst_agent import CatalystAgent
 from agents.risk_agent import RiskAgent
 from agents.entry_agent import EntryAgent
 from agents.exit_agent import ExitAgent
+from agents.operation_advice_agent import OperationAdviceAgent
 from agents.validation_agent import ValidationAgent
 from agents.orchestrator import OrchestratorAgent
 
@@ -54,6 +55,11 @@ class TestAgentInitialization(unittest.TestCase):
         agent = ValidationAgent()
         self.assertIsNotNone(agent)
 
+    def test_operation_advice_agent_init(self):
+        """測試 OperationAdviceAgent 初始化"""
+        agent = OperationAdviceAgent()
+        self.assertIsNotNone(agent)
+
     def test_orchestrator_agent_init(self):
         """測試 OrchestratorAgent 初始化"""
         agent = OrchestratorAgent()
@@ -64,6 +70,7 @@ class TestAgentInitialization(unittest.TestCase):
         self.assertIsNotNone(agent.risk)
         self.assertIsNotNone(agent.entry)
         self.assertIsNotNone(agent.exit)
+        self.assertIsNotNone(agent.operation_advice)
 
 
 class TestScannerAgent(unittest.TestCase):

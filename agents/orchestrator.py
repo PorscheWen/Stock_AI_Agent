@@ -24,6 +24,7 @@ from agents.catalyst_agent import CatalystAgent
 from agents.risk_agent import RiskAgent
 from agents.entry_agent import EntryAgent
 from agents.exit_agent import ExitAgent
+from agents.operation_advice_agent import OperationAdviceAgent
 from agents.validation_agent import ValidationAgent
 from agents import line_notifier
 from config.settings import (
@@ -48,6 +49,7 @@ class OrchestratorAgent:
         self.risk      = RiskAgent()
         self.entry     = EntryAgent()
         self.exit      = ExitAgent()
+        self.operation_advice = OperationAdviceAgent()
         self.validator = ValidationAgent()
 
     # ── 主流程 ────────────────────────────────────────────
@@ -100,10 +102,16 @@ class OrchestratorAgent:
                                    entry_map, exit_map, val_results)
             for c in candidates if c["symbol"] in passed_set
         ]
+        approved_stocks = sorted(
+            approved_stocks,
+            key=lambda s: s["scores"]["recommendation"],
+            reverse=True,
+        )[:4]
 
         # Step 7 — Claude Opus 口語總結
         logger.info("[Step 7] Claude Opus 生成總結")
         ai_summary = self._generate_summary(approved_stocks, today)
+        operation_advice = self.operation_advice.run(approved_stocks)
 
         elapsed = round(time.time() - start)
         report  = {
@@ -114,6 +122,7 @@ class OrchestratorAgent:
             "elapsed_seconds" : elapsed,
             "stocks"          : approved_stocks,
             "ai_summary"      : ai_summary,
+            "operation_advice": asdict(operation_advice),
         }
 
         # Step 8 — 儲存 + 推播
@@ -213,6 +222,26 @@ class OrchestratorAgent:
             candidates.append(c)
         return candidates
 
+    def _calc_recommendation_score(self, c: dict, vm) -> float:
+        confidence = round(vm.confidence_score * 100, 1) if vm else 0.0
+        momentum = c["momentum_score"]
+        catalyst = c["catalyst_score"]
+        rr_ratio = c["risk_reward_ratio"]
+        risk_level = c["risk_level"]
+        board_bonus = min(c["consecutive_days"], 4) * 2
+        rr_component = min(rr_ratio, 3.0) / 3.0 * 10
+        risk_penalty = max(0, risk_level - 3) * 4
+
+        score = (
+            confidence * 0.5
+            + momentum * 0.25
+            + catalyst * 0.2
+            + board_bonus
+            + rr_component
+            - risk_penalty
+        )
+        return round(max(0.0, min(100.0, score)), 1)
+
     def _build_stock_dict(
         self, c: dict, momentum_map, catalyst_map, risk_map, entry_map, exit_map, val_results
     ) -> dict:
@@ -221,6 +250,8 @@ class OrchestratorAgent:
         em  = entry_map.get(sym)
         xm  = exit_map.get(sym)
         vm  = next((v for v in val_results if v.symbol == sym), None)
+
+        recommendation = self._calc_recommendation_score(c, vm)
 
         return {
             "symbol"         : sym,
@@ -233,6 +264,7 @@ class OrchestratorAgent:
                 "momentum"  : c["momentum_score"],
                 "catalyst"  : c["catalyst_score"],
                 "confidence": round(vm.confidence_score * 100, 1) if vm else 0,
+                "recommendation": recommendation,
             },
             "risk": {
                 "level"            : rm.risk_level if rm else 3,
@@ -278,7 +310,7 @@ class OrchestratorAgent:
         top = [
             f"{s['symbol']} {s['name']} 第{s['consecutive_days']}板 "
             f"信心{s['scores']['confidence']:.0f}% 題材:{s['catalyst']['category']}"
-            for s in stocks[:5]
+            for s in stocks[:4]
         ]
         prompt = f"""今日 {date_str} 共 {len(stocks)} 檔妖股通過驗證：
 {chr(10).join(top)}
@@ -318,4 +350,5 @@ class OrchestratorAgent:
             "elapsed_seconds" : round(elapsed),
             "stocks"          : [],
             "ai_summary"      : "今日無妖股候選",
+            "operation_advice": asdict(self.operation_advice.run([])),
         }

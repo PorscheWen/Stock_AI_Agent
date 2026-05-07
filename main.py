@@ -112,7 +112,7 @@ def _print_report(report: dict) -> None:
 
         print(f"\n  #{rank} {board_emoji} {s['symbol']} {s['name']}")
         print(f"     收盤 ${s['close']:,.1f}  漲幅 +{s['pct_change']:.1f}%  量比 {s['volume_ratio']:.1f}x")
-        print(f"     第 {s['consecutive_days']} 板 | 動能 {sc['momentum']:.0f} | 催化劑 {sc['catalyst']:.0f} | 信心 {sc['confidence']:.0f}%")
+        print(f"     第 {s['consecutive_days']} 板 | 動能 {sc['momentum']:.0f} | 催化劑 {sc['catalyst']:.0f} | 信心 {sc['confidence']:.0f}% | 推薦 {sc.get('recommendation', 0):.0f}")
         print(f"     題材：{s['catalyst']['category'].upper()} ({s['catalyst']['durability']})")
         print(f"     {passed_icon} {vl['verdict']}")
         print()
@@ -135,6 +135,15 @@ def _print_report(report: dict) -> None:
 
     print(f"\n  📝 AI 總結：")
     print(f"  {report['ai_summary']}\n")
+
+    op = report.get("operation_advice", {})
+    if op:
+        print("  🧭 整體操作建議：")
+        print(f"  市場節奏：{op.get('market_mode', '')}")
+        print(f"  建議操作：{op.get('action', '')}")
+        print(f"  倉位建議：{op.get('position_guidance', '')}")
+        print(f"  風險提醒：{op.get('risk_alert', '')}")
+        print(f"  依據：{op.get('rationale', '')}\n")
 
 
 def main() -> None:
