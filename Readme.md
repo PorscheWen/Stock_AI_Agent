@@ -41,6 +41,8 @@ Stock_AI_Agent/
 ├── config/
 │   └── settings.py            ⚙️  所有策略參數
 ├── main.py                    CLI 進入點
+├── backtest.py                📈 歷史回測（命中率/報酬）
+├── webui.py                   🌐 簡易 WebUI（看報告 + 一鍵執行）
 ├── requirements.txt
 └── .env.example
 ```
@@ -138,7 +140,14 @@ python main.py
 # 4. 只輸出 JSON 報告
 python main.py --json
 
-# 5. 執行測試
+# 5. 執行回測（預設 3 天）
+python backtest.py
+
+# 6. 啟動 WebUI
+python webui.py
+# 瀏覽器開啟 http://127.0.0.1:8080
+
+# 7. 執行測試
 python -m pytest tests/ -v
 ```
 
@@ -149,8 +158,11 @@ python -m pytest tests/ -v
 | 變數 | 用途 | 必填 |
 |------|------|------|
 | `ANTHROPIC_API_KEY` | Claude AI（催化劑分析 + 空方驗證） | ✅ |
-| `LINE_CHANNEL_ACCESS_TOKEN` | LINE Bot 推播 | 選用 |
-| `LINE_USER_ID` | 推播目標 ID | 選用 |
+| `CHANNEL_STOCK_ACCESS_TOKEN` | LINE Bot 推播 Token | 選用 |
+| `CHANNEL_STOCK_USER_ID` | 單一推播目標 ID | 選用 |
+| `CHANNEL_STOCK_USER_IDS` | 多人推播 ID（逗號分隔） | 選用 |
+| `TOP_RECOMMEND_N` | 推薦檔數上限（預設 8） | 選用 |
+| `DEFAULT_BACKTEST_HORIZON_DAYS` | 回測天數預設值（預設 3） | 選用 |
 
 ---
 
@@ -165,8 +177,8 @@ python -m pytest tests/ -v
 | Secret | 說明 |
 |--------|------|
 | `ANTHROPIC_API_KEY` | Claude API 金鑰（必要） |
-| `LINE_CHANNEL_ACCESS_TOKEN` | LINE Bot Token（選用） |
-| `LINE_USER_ID` | 推播目標用戶 ID（選用） |
+| `CHANNEL_STOCK_ACCESS_TOKEN` | LINE Bot Token（選用） |
+| `CHANNEL_STOCK_USER_ID` | 推播目標用戶 ID（選用） |
 
 ---
 

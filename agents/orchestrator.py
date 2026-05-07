@@ -31,6 +31,7 @@ from config.settings import (
     ANTHROPIC_API_KEY,
     CLAUDE_MODEL,
     REPORT_DIR,
+    TOP_RECOMMEND_N,
 )
 
 load_dotenv()
@@ -106,7 +107,7 @@ class OrchestratorAgent:
             approved_stocks,
             key=lambda s: (s["scores"]["recommendation"], s.get("volume", 0)),
             reverse=True,
-        )[:8]
+        )[:TOP_RECOMMEND_N]
 
         # Step 7 — Claude Opus 口語總結
         logger.info("[Step 7] Claude Opus 生成總結")
@@ -312,7 +313,7 @@ class OrchestratorAgent:
         top = [
             f"{s['symbol']} {s['name']} 第{s['consecutive_days']}板 "
             f"信心{s['scores']['confidence']:.0f}% 題材:{s['catalyst']['category']}"
-            for s in stocks[:8]
+            for s in stocks[:TOP_RECOMMEND_N]
         ]
         prompt = f"""今日 {date_str} 共 {len(stocks)} 檔妖股通過驗證：
 {chr(10).join(top)}
