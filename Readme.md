@@ -66,7 +66,7 @@ ORCHESTRATOR（主控）
     │   ├─ ② 風控合規驗證
     │   └─ ③ Claude 空方邏輯反駁
     │                         │
-    ├─ [Step 6] 依推薦分數排序（同分量大優先）取前 8 檔
+    ├─ [Step 6] 依推薦分數排序（同分量大優先）取前 4 檔
     │
     └─ [Step 7] 輸出報告 + LINE 推播 + 整體操作建議
 ```
@@ -118,7 +118,7 @@ ORCHESTRATOR（主控）
 
 ### 推薦排序規則（OrchestratorAgent）
 
-- 僅推薦 **前 8 檔**通過驗證標的
+- 僅推薦 **前 4 檔**通過驗證標的
 - 先依 `recommendation` 推薦分數由高到低排序
 - 若推薦分數同分，則以 **成交量（volume）較大者優先**
 - 報告同時提供 `OperationAdviceAgent` 的整體操作建議（市場節奏、倉位、風險提醒）
@@ -161,7 +161,7 @@ python -m pytest tests/ -v
 | `CHANNEL_STOCK_ACCESS_TOKEN` | LINE Bot 推播 Token | 選用 |
 | `CHANNEL_STOCK_USER_ID` | 單一推播目標 ID | 選用 |
 | `CHANNEL_STOCK_USER_IDS` | 多人推播 ID（逗號分隔） | 選用 |
-| `TOP_RECOMMEND_N` | 推薦檔數上限（預設 8） | 選用 |
+| `TOP_RECOMMEND_N` | 推薦檔數上限（預設 4） | 選用 |
 | `DEFAULT_BACKTEST_HORIZON_DAYS` | 回測天數預設值（預設 3） | 選用 |
 
 ---
@@ -192,6 +192,6 @@ python -m pytest tests/ -v
 | **RiskAgent** | ATR 停損計算、板數動態倉位調整、風險等級 L1-L5 | 風控參數 |
 | **EntryAgent** | 最佳進場方式（漲停追進/集合競價/回踩 MA5）與價格區間 | 進場建議 |
 | **ExitAgent** | 分批出場計劃、移動停損條件、緊急出場觸發 | 出場策略 |
-| **OperationAdviceAgent** | 依前 8 檔整體狀態產生操作建議與倉位建議 | 整體操作建議 |
+| **OperationAdviceAgent** | 依前 4 檔整體狀態產生操作建議與倉位建議 | 整體操作建議 |
 | **ValidationAgent** | 三重把關：動能一致性 + 風控合規 + Claude 空方反駁 | 通過/否決 + 信心分數 |
 | **OrchestratorAgent** | 並行協調所有 Agent，生成報告 + LINE 推播 | JSON 報告 |

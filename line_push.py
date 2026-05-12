@@ -601,7 +601,7 @@ def push_text(message: str) -> None:
 def push_surge_report(df_top10) -> bool:
     """df_top10: surge_analyzer.main() 回傳的 DataFrame（已按 surge_score 降序，僅含 ≥90 分）
     
-    限制最多推薦六檔股票，為避免超過 LINE 50 KB 限制，將股票分批發送，每批最多 4 檔股票。
+    限制最多推薦四檔股票，為避免超過 LINE 50 KB 限制，將股票分批發送，每批最多 4 檔股票。
     """
     try:
         api      = _get_api()
@@ -615,8 +615,8 @@ def push_surge_report(df_top10) -> bool:
 
     date_str = datetime.now().strftime("%Y-%m-%d")
     
-    # 限制最多推薦六檔股票
-    df_limited = df_top10.head(6)
+    # 限制最多推薦四檔股票（與暴漲潛力 TOP 檔數一致）
+    df_limited = df_top10.head(4)
     rows = df_limited.to_dict(orient="records")
     
     # 每批最多 4 檔股票（避免超過 50 KB）

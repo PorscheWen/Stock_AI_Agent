@@ -35,7 +35,7 @@ TW = timezone(timedelta(hours=8))
 
 REPORT_DIR   = Path("daily_run")
 TOP_VOLUME_N = 100
-TOP_RESULT_N = 10
+TOP_RESULT_N = 4
 
 TWSE_MARKET_URL = (
     "https://www.twse.com.tw/rwd/zh/afterTrading/"
@@ -317,7 +317,7 @@ def _build_report(df_top10: pd.DataFrame, date_str: str, sample_n: int) -> str:
     rows = df_top10.to_dict(orient="records")
 
     lines = [
-        "# 台股前百大交易量 — 隔日暴漲潛力 TOP 10",
+        f"# 台股前百大交易量 — 隔日暴漲潛力 TOP {TOP_RESULT_N}",
         f"**分析基準日**：{analysis_date}　｜　**預測目標日**：{next_day}（下一交易日）",
         "",
         "> ⚠️ 本報告僅供參考，不構成投資建議，最終決策請自行判斷。",
@@ -329,7 +329,7 @@ def _build_report(df_top10: pd.DataFrame, date_str: str, sample_n: int) -> str:
         "",
         "---",
         "",
-        "## TOP 10 暴漲潛力股一覽",
+        f"## TOP {TOP_RESULT_N} 暴漲潛力股一覽",
         "",
         "| 排名 | 代碼 | 名稱 | 收盤 | 當日漲幅 | 成交量(張) | 評分 |",
         "|------|------|------|------|---------|-----------|------|",
@@ -422,14 +422,14 @@ def main(
         logger.warning("[Step 4] 無分析結果")
         return pd.DataFrame(), ""
 
-    # Step 5：排序取 TOP 10
+    # Step 5：排序取 TOP N（TOP_RESULT_N）
     df_result = (
         pd.DataFrame(results)
         .sort_values("surge_score", ascending=False)
         .reset_index(drop=True)
     )
     df_top10 = df_result.head(TOP_RESULT_N).copy()
-    logger.info(f"[Step 5] TOP 10 完成，最高分：{df_top10.iloc[0]['surge_score']:.0f}")
+    logger.info(f"[Step 5] TOP {TOP_RESULT_N} 完成，最高分：{df_top10.iloc[0]['surge_score']:.0f}")
 
     # Step 6：生成 Markdown 報告
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
@@ -468,7 +468,7 @@ if __name__ == "__main__":
 
     if not df.empty:
         print(f"\n✅ 分析完成！報告：{path}")
-        print("TOP 10 暴漲潛力股：")
+        print(f"TOP {TOP_RESULT_N} 暴漲潛力股：")
         for i, row in df.iterrows():
             print(
                 f"  #{i+1:2d} {row['code']} {row.get('name',''):8s}"

@@ -70,7 +70,7 @@ MIN_BOARD_COUNT        = 1     # 最少連板數（驗證層，對齊掃描層 M
 
 # ── 輸出設定 ──────────────────────────────────────────────
 REPORT_DIR = "reports"
-TOP_RECOMMEND_N = int(os.getenv("TOP_RECOMMEND_N", "8"))  # 最多推薦檔數
+TOP_RECOMMEND_N = int(os.getenv("TOP_RECOMMEND_N", "4"))  # 最多推薦檔數
 DEFAULT_BACKTEST_HORIZON_DAYS = int(os.getenv("DEFAULT_BACKTEST_HORIZON_DAYS", "3"))
 
 # ── 股票名稱對照（常見妖股標的） ─────────────────────────
