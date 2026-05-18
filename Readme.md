@@ -146,9 +146,6 @@ python backtest.py
 # 6. 啟動 WebUI
 python webui.py
 # 瀏覽器開啟 http://127.0.0.1:8080
-
-# 7. 執行測試
-python -m pytest tests/ -v
 ```
 
 ---
