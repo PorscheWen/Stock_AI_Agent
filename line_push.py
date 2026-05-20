@@ -158,19 +158,8 @@ def _exit_strategy(tgt_pct: float, stop_pct: float) -> str:
 
 
 # ── 摘要 Bubble ───────────────────────────────────────
-def _summary_bubble(date_str: str, count: int, batch_info: str = None) -> dict:
-    """建立摘要 bubble
-    
-    Args:
-        date_str: 日期字串
-        count: 本批次股票數量
-        batch_info: 批次資訊，例如 "1/3" 表示第 1 批，共 3 批
-    """
-    # 標題顯示批次資訊（如果有）
-    title_text = "🇹🇼 台股妖股偵測"
-    if batch_info:
-        title_text = f"🇹🇼 妖股偵測 [{batch_info}]"
-    
+def _summary_bubble(date_str: str, count_twse: int, count_tpex: int) -> dict:
+    """上市+上櫃合併摘要 bubble"""
     return {
         "type": "bubble",
         "size": "mega",
@@ -180,8 +169,10 @@ def _summary_bubble(date_str: str, count: int, batch_info: str = None) -> dict:
             "backgroundColor": "#00695C",
             "paddingAll": "16px",
             "contents": [
-                {"type": "text", "text": title_text, "size": "lg", "weight": "bold", "color": "#FFFFFF"},
-                {"type": "text", "text": date_str, "size": "sm", "color": "#B2DFDB", "margin": "xs"},
+                {"type": "text", "text": "🇹🇼 台股暴漲潛力精選",
+                 "size": "lg", "weight": "bold", "color": "#FFFFFF"},
+                {"type": "text", "text": date_str,
+                 "size": "sm", "color": "#B2DFDB", "margin": "xs"},
             ],
         },
         "body": {
@@ -192,39 +183,42 @@ def _summary_bubble(date_str: str, count: int, batch_info: str = None) -> dict:
             "contents": [
                 {
                     "type": "box",
-                    "layout": "vertical",
-                    "backgroundColor": "#E8F5E9",
-                    "paddingAll": "16px",
-                    "cornerRadius": "8px",
+                    "layout": "horizontal",
+                    "spacing": "sm",
                     "contents": [
-                        {"type": "text", "text": "本批精選（評分 ≥ 70）", "size": "xs", "color": "#555555", "align": "center"},
                         {
-                            "type": "text",
-                            "text": f"{count} 檔" if count > 0 else "今日無符合",
-                            "size": "xxl",
-                            "weight": "bold",
-                            "color": "#00695C" if count > 0 else "#C62828",
-                            "align": "center",
+                            "type": "box", "layout": "vertical", "flex": 1,
+                            "backgroundColor": "#E3F2FD", "paddingAll": "12px",
+                            "cornerRadius": "8px",
+                            "contents": [
+                                {"type": "text", "text": "🏦 上市", "size": "xs",
+                                 "color": "#1A5276", "align": "center", "weight": "bold"},
+                                {"type": "text",
+                                 "text": f"{count_twse} 檔" if count_twse > 0 else "無",
+                                 "size": "xxl", "weight": "bold", "align": "center",
+                                 "color": "#1565C0" if count_twse > 0 else "#9E9E9E"},
+                            ],
+                        },
+                        {
+                            "type": "box", "layout": "vertical", "flex": 1,
+                            "backgroundColor": "#F3E5F5", "paddingAll": "12px",
+                            "cornerRadius": "8px",
+                            "contents": [
+                                {"type": "text", "text": "🏪 上櫃", "size": "xs",
+                                 "color": "#6C3483", "align": "center", "weight": "bold"},
+                                {"type": "text",
+                                 "text": f"{count_tpex} 檔" if count_tpex > 0 else "無",
+                                 "size": "xxl", "weight": "bold", "align": "center",
+                                 "color": "#7B1FA2" if count_tpex > 0 else "#9E9E9E"},
+                            ],
                         },
                     ],
                 },
-                {
-                    "type": "text",
-                    "text": "依評分由高至低排列，僅呈現評分 ≥ 70 分之個股",
-                    "size": "xs",
-                    "color": "#777777",
-                    "wrap": True,
-                    "margin": "md",
-                    "align": "center",
-                },
-                {
-                    "type": "text",
-                    "text": "⚠️ 僅供參考，非投資建議",
-                    "size": "xxs",
-                    "color": "#AAAAAA",
-                    "align": "center",
-                    "margin": "sm",
-                },
+                {"type": "text", "text": "上市、上櫃各依評分由高至低排列",
+                 "size": "xs", "color": "#777777", "wrap": True,
+                 "margin": "md", "align": "center"},
+                {"type": "text", "text": "⚠️ 僅供參考，非投資建議",
+                 "size": "xxs", "color": "#AAAAAA", "align": "center", "margin": "sm"},
             ],
         },
     }
@@ -655,10 +649,11 @@ def push_text(message: str) -> None:
     ))
 
 
-def push_surge_report(df_top10) -> bool:
-    """df_top10: surge_analyzer.main() 回傳的 DataFrame（已按 surge_score 降序，僅含 ≥90 分）
-    
-    限制最多推薦四檔股票，為避免超過 LINE 50 KB 限制，將股票分批發送，每批最多 4 檔股票。
+def push_surge_report(df_twse, df_tpex) -> bool:
+    """上市 TOP 4 和上櫃 TOP 4 分兩則 Flex Message 分別推播。
+
+    df_twse: surge_analyzer 回傳的上市 DataFrame（已按 surge_score 降序）
+    df_tpex: surge_analyzer 回傳的上櫃 DataFrame（已按 surge_score 降序）
     """
     try:
         api      = _get_api()
@@ -670,56 +665,46 @@ def push_surge_report(df_top10) -> bool:
     from linebot.v3.messaging import PushMessageRequest, FlexMessage, FlexContainer
     import json
 
-    date_str = datetime.now().strftime("%Y-%m-%d")
-    
-    # 限制最多推薦四檔股票（與暴漲潛力 TOP 檔數一致）
-    df_limited = df_top10.head(4)
-    rows = df_limited.to_dict(orient="records")
-    
-    # 每批最多 4 檔股票（避免超過 50 KB）
-    BATCH_SIZE = 4
-    total_stocks = len(rows)
-    
+    date_str   = datetime.now().strftime("%Y-%m-%d")
+    twse_rows  = df_twse.head(4).to_dict(orient="records") if not df_twse.empty else []
+    tpex_rows  = df_tpex.head(4).to_dict(orient="records") if not df_tpex.empty else []
+
     success_count = 0
     for uid in user_ids:
         try:
-            # 分批發送
-            for batch_idx in range(0, total_stocks, BATCH_SIZE):
-                batch_rows = rows[batch_idx:batch_idx + BATCH_SIZE]
-                batch_num = (batch_idx // BATCH_SIZE) + 1
-                total_batches = (total_stocks + BATCH_SIZE - 1) // BATCH_SIZE
-                
-                # 建立摘要 bubble（顯示當前批次資訊）
-                batch_info = f"{batch_num}/{total_batches}" if total_batches > 1 else None
-                bubbles = [_summary_bubble(date_str, len(batch_rows), batch_info)]
-                
-                # 加入股票 bubbles
-                for row in batch_rows:
-                    rank = rows.index(row) + 1
-                    bubbles.append(_stock_bubble(row, rank))
-                
-                carousel = {"type": "carousel", "contents": bubbles}
-                
-                # 檢查大小（可選，用於除錯）
-                carousel_json = json.dumps(carousel, ensure_ascii=False)
-                size_kb = len(carousel_json.encode('utf-8')) / 1024
-                logger.info("[LINE] 批次 %d/%d - 大小: %.1f KB, 股票數: %d", 
-                           batch_num, total_batches, size_kb, len(batch_rows))
-                
-                msg = FlexMessage(
-                    alt_text=f"🇹🇼 台股妖股偵測 ({batch_num}/{total_batches}) — {date_str}",
-                    contents=FlexContainer.from_dict(carousel),
-                )
-                
-                # 發送當前批次
-                api.push_message(
-                    PushMessageRequest(to=uid, messages=[msg])
-                )
-            
-            logger.info("[LINE] 推播成功 → %s  TOP %d (共 %d 批)", 
-                       uid, total_stocks, total_batches)
+            messages = []
+
+            # ── 訊息 1：摘要 + 上市 TOP 4 ─────────────────
+            twse_bubbles = [_summary_bubble(date_str, len(twse_rows), len(tpex_rows))]
+            for rank, row in enumerate(twse_rows, 1):
+                twse_bubbles.append(_stock_bubble(row, rank))
+            twse_carousel = {"type": "carousel", "contents": twse_bubbles}
+            twse_kb = len(json.dumps(twse_carousel, ensure_ascii=False).encode()) / 1024
+            logger.info("[LINE] 上市 carousel %.1f KB (%d 檔)", twse_kb, len(twse_rows))
+            messages.append(FlexMessage(
+                alt_text=f"🏦 上市 TOP {len(twse_rows)} — {date_str}",
+                contents=FlexContainer.from_dict(twse_carousel),
+            ))
+
+            # ── 訊息 2：上櫃 TOP 4 ────────────────────────
+            if tpex_rows:
+                tpex_bubbles = []
+                for rank, row in enumerate(tpex_rows, 1):
+                    tpex_bubbles.append(_stock_bubble(row, rank))
+                tpex_carousel = {"type": "carousel", "contents": tpex_bubbles}
+                tpex_kb = len(json.dumps(tpex_carousel, ensure_ascii=False).encode()) / 1024
+                logger.info("[LINE] 上櫃 carousel %.1f KB (%d 檔)", tpex_kb, len(tpex_rows))
+                messages.append(FlexMessage(
+                    alt_text=f"🏪 上櫃 TOP {len(tpex_rows)} — {date_str}",
+                    contents=FlexContainer.from_dict(tpex_carousel),
+                ))
+
+            # LINE 單次 push 最多 5 則訊息
+            api.push_message(PushMessageRequest(to=uid, messages=messages[:5]))
+            logger.info("[LINE] 推播成功 → %s（上市 %d + 上櫃 %d）",
+                        uid, len(twse_rows), len(tpex_rows))
             success_count += 1
-            
+
         except Exception as e:
             logger.error("[LINE] 推播失敗 → %s : %s", uid, e)
 
@@ -731,14 +716,18 @@ if __name__ == "__main__":
     from surge_analyzer import main as surge_main
 
     logger.info("► 執行 surge_analyzer...")
-    df_top10, _ = surge_main()
+    df_tw, df_otc, _ = surge_main()
 
     logger.info("► 推播至 LINE Bot...")
-    ok = push_surge_report(df_top10)
+    ok = push_surge_report(df_tw, df_otc)
 
     print()
     print("推播結果:", "✅ 成功" if ok else "❌ 失敗")
-    print()
-    print("Carousel 順序（左→右）：")
-    for i, row in df_top10.iterrows():
-        print(f"  #{i+1:2d} {row['code']} {row.get('name',''):6s}  評分={row['surge_score']:.0f}")
+    if not df_tw.empty:
+        print("\n🏦 上市推播清單：")
+        for i, row in df_tw.iterrows():
+            print(f"  #{i+1:2d} {row['code']} {row.get('name',''):6s}  評分={row['surge_score']:.0f}")
+    if not df_otc.empty:
+        print("\n🏪 上櫃推播清單：")
+        for i, row in df_otc.iterrows():
+            print(f"  #{i+1:2d} {row['code']} {row.get('name',''):6s}  評分={row['surge_score']:.0f}")

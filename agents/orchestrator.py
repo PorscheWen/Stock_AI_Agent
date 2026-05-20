@@ -97,17 +97,27 @@ class OrchestratorAgent:
         passed_set  = {v.symbol for v in passed}
         logger.info(f"[Step 5] 通過 {len(passed)}/{len(candidates)} 檔")
 
-        # Step 6 — 建構報告
-        approved_stocks = [
+        # Step 6 — 建構報告：上市 / 上櫃各取 TOP_RECOMMEND_N
+        all_built = [
             self._build_stock_dict(c, momentum_map, catalyst_map, risk_map,
                                    entry_map, exit_map, val_results)
             for c in candidates if c["symbol"] in passed_set
         ]
-        approved_stocks = sorted(
-            approved_stocks,
-            key=lambda s: (s["scores"]["recommendation"], s.get("volume", 0)),
-            reverse=True,
+
+        def _sort_key(s):
+            return (s["scores"]["recommendation"], s.get("volume", 0))
+
+        stocks_twse = sorted(
+            [s for s in all_built if not s["symbol"].endswith(".TWO")],
+            key=_sort_key, reverse=True,
         )[:TOP_RECOMMEND_N]
+
+        stocks_tpex = sorted(
+            [s for s in all_built if s["symbol"].endswith(".TWO")],
+            key=_sort_key, reverse=True,
+        )[:TOP_RECOMMEND_N]
+
+        approved_stocks = stocks_twse + stocks_tpex
 
         # Step 7 — Claude Opus 口語總結
         logger.info("[Step 7] Claude Opus 生成總結")
@@ -116,14 +126,18 @@ class OrchestratorAgent:
 
         elapsed = round(time.time() - start)
         report  = {
-            "generated_at"    : datetime.now().isoformat(),
-            "analysis_date"   : today,
-            "total_scanned"   : len(symbols),
-            "total_candidates": len(approved_stocks),
-            "elapsed_seconds" : elapsed,
-            "stocks"          : approved_stocks,
-            "ai_summary"      : ai_summary,
-            "operation_advice": asdict(operation_advice),
+            "generated_at"         : datetime.now().isoformat(),
+            "analysis_date"        : today,
+            "total_scanned"        : len(symbols),
+            "total_candidates"     : len(approved_stocks),
+            "total_candidates_twse": len(stocks_twse),
+            "total_candidates_tpex": len(stocks_tpex),
+            "elapsed_seconds"      : elapsed,
+            "stocks"               : approved_stocks,   # 合併清單（向下相容）
+            "stocks_twse"          : stocks_twse,
+            "stocks_tpex"          : stocks_tpex,
+            "ai_summary"           : ai_summary,
+            "operation_advice"     : asdict(operation_advice),
         }
 
         # Step 8 — 儲存 + 推播
@@ -314,15 +328,19 @@ class OrchestratorAgent:
         if not stocks:
             return "今日無妖股通過三重驗證，建議觀望。"
 
+        twse_cnt = sum(1 for s in stocks if not s["symbol"].endswith(".TWO"))
+        tpex_cnt = sum(1 for s in stocks if s["symbol"].endswith(".TWO"))
         top = [
+            f"{'[上櫃]' if s['symbol'].endswith('.TWO') else '[上市]'}"
             f"{s['symbol']} {s['name']} 第{s['consecutive_days']}板 "
             f"信心{s['scores']['confidence']:.0f}% 題材:{s['catalyst']['category']}"
-            for s in stocks[:TOP_RECOMMEND_N]
+            for s in stocks[:TOP_RECOMMEND_N * 2]
         ]
-        prompt = f"""今日 {date_str} 共 {len(stocks)} 檔妖股通過驗證：
-{chr(10).join(top)}
-
-用80字（繁體中文）說明：市場氛圍、最強標的、操作要點。"""
+        prompt = (
+            f"今日 {date_str} 妖股：上市 {twse_cnt} 檔、上櫃 {tpex_cnt} 檔通過驗證：\n"
+            f"{chr(10).join(top)}\n\n"
+            "用80字（繁體中文）說明：市場氛圍、最強標的（含市場別）、操作要點。"
+        )
 
         try:
             resp = client.messages.create(
@@ -350,12 +368,16 @@ class OrchestratorAgent:
 
     def _empty_report(self, today: str, elapsed: float) -> dict:
         return {
-            "generated_at"    : datetime.now().isoformat(),
-            "analysis_date"   : today,
-            "total_scanned"   : 0,
-            "total_candidates": 0,
-            "elapsed_seconds" : round(elapsed),
-            "stocks"          : [],
-            "ai_summary"      : "今日無妖股候選",
-            "operation_advice": asdict(self.operation_advice.run([])),
+            "generated_at"         : datetime.now().isoformat(),
+            "analysis_date"        : today,
+            "total_scanned"        : 0,
+            "total_candidates"     : 0,
+            "total_candidates_twse": 0,
+            "total_candidates_tpex": 0,
+            "elapsed_seconds"      : round(elapsed),
+            "stocks"               : [],
+            "stocks_twse"          : [],
+            "stocks_tpex"          : [],
+            "ai_summary"           : "今日無妖股候選",
+            "operation_advice"     : asdict(self.operation_advice.run([])),
         }

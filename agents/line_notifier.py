@@ -277,9 +277,10 @@ def _build_stock_bubble(s: dict, rank: int = 0) -> dict:
 
 
 def _build_summary_bubble(report: dict) -> dict:
-    """總覽摘要 Bubble"""
-    date  = report["generated_at"][:10]
-    total = report["total_candidates"]
+    """總覽摘要 Bubble（含上市/上櫃分別計數）"""
+    date       = report["generated_at"][:10]
+    cnt_twse   = report.get("total_candidates_twse", 0)
+    cnt_tpex   = report.get("total_candidates_tpex", 0)
     ai_summary = report.get("ai_summary", "")
     summary_short = ai_summary[:180] + "..." if len(ai_summary) > 180 else ai_summary
 
@@ -299,33 +300,51 @@ def _build_summary_bubble(report: dict) -> dict:
             "type": "box", "layout": "vertical", "spacing": "md", "paddingAll": "16px",
             "contents": [
                 {
-                    "type": "box", "layout": "horizontal",
+                    "type": "box", "layout": "horizontal", "spacing": "sm",
                     "contents": [
                         {
                             "type": "box", "layout": "vertical", "flex": 1,
-                            "backgroundColor": "#EBF5FB", "paddingAll": "12px",
+                            "backgroundColor": "#E3F2FD", "paddingAll": "12px",
                             "cornerRadius": "8px",
                             "contents": [
-                                {"type": "text", "text": "通過驗證", "size": "xs", "color": "#888", "align": "center"},
-                                {"type": "text", "text": f"{total} 檔", "size": "xxl",
-                                 "weight": "bold", "color": "#2980B9", "align": "center"},
+                                {"type": "text", "text": "🏦 上市",
+                                 "size": "xs", "color": "#1A5276", "align": "center", "weight": "bold"},
+                                {"type": "text", "text": f"{cnt_twse} 檔",
+                                 "size": "xxl", "weight": "bold",
+                                 "color": "#1565C0" if cnt_twse > 0 else "#9E9E9E",
+                                 "align": "center"},
                             ],
                         },
-                        {"type": "box", "layout": "vertical", "flex": 0, "width": "12px", "contents": []},
+                        {
+                            "type": "box", "layout": "vertical", "flex": 1,
+                            "backgroundColor": "#F3E5F5", "paddingAll": "12px",
+                            "cornerRadius": "8px",
+                            "contents": [
+                                {"type": "text", "text": "🏪 上櫃",
+                                 "size": "xs", "color": "#6C3483", "align": "center", "weight": "bold"},
+                                {"type": "text", "text": f"{cnt_tpex} 檔",
+                                 "size": "xxl", "weight": "bold",
+                                 "color": "#7B1FA2" if cnt_tpex > 0 else "#9E9E9E",
+                                 "align": "center"},
+                            ],
+                        },
                         {
                             "type": "box", "layout": "vertical", "flex": 1,
                             "backgroundColor": "#EAFAF1", "paddingAll": "12px",
                             "cornerRadius": "8px",
                             "contents": [
-                                {"type": "text", "text": "耗時", "size": "xs", "color": "#888", "align": "center"},
-                                {"type": "text", "text": f"{report['elapsed_seconds']}s", "size": "xxl",
-                                 "weight": "bold", "color": "#27AE60", "align": "center"},
+                                {"type": "text", "text": "耗時",
+                                 "size": "xs", "color": "#888", "align": "center"},
+                                {"type": "text", "text": f"{report['elapsed_seconds']}s",
+                                 "size": "xxl", "weight": "bold",
+                                 "color": "#27AE60", "align": "center"},
                             ],
                         },
                     ],
                 },
                 {
-                    "type": "text", "text": summary_short or "今日掃描完成，請查看個股報告",
+                    "type": "text",
+                    "text": summary_short or "今日掃描完成，請查看個股報告",
                     "size": "xs", "color": "#555", "wrap": True, "margin": "md",
                 },
             ],
@@ -334,7 +353,7 @@ def _build_summary_bubble(report: dict) -> dict:
 
 
 def push_report(report: dict) -> bool:
-    """推播妖股報告至 LINE Bot（支援單人/多人）"""
+    """推播妖股報告至 LINE Bot（上市/上櫃各自一則 Flex Message）"""
     try:
         api      = _get_api()
         user_ids = _get_user_ids()
@@ -343,25 +362,51 @@ def push_report(report: dict) -> bool:
         return False
 
     try:
-        stocks = sorted(
-            report["stocks"],
-            key=lambda x: x["scores"]["confidence"],
-            reverse=True,
+        date_str   = report["generated_at"][:10]
+        stocks_tw  = report.get("stocks_twse", [])
+        stocks_otc = report.get("stocks_tpex", [])
+
+        # 若新欄位不存在（舊格式相容），退回全部一起處理
+        if not stocks_tw and not stocks_otc:
+            stocks_tw = report.get("stocks", [])
+
+        messages = []
+
+        # ── 訊息 1：摘要 + 上市股票 ──────────────────────
+        twse_bubbles = [_build_summary_bubble(report)]
+        for rank, s in enumerate(
+            sorted(stocks_tw, key=lambda x: x["scores"]["confidence"], reverse=True), 1
+        ):
+            twse_bubbles.append(_build_stock_bubble(s, rank))
+        messages.append(FlexMessage(
+            alt_text=(
+                f"🏦 上市妖股 {date_str} — "
+                f"{len(stocks_tw)} 檔 | 上櫃 {len(stocks_otc)} 檔通過驗證"
+            ),
+            contents=FlexContainer.from_dict(
+                {"type": "carousel", "contents": twse_bubbles[:12]}
+            ),
+        ))
+
+        # ── 訊息 2：上櫃股票（有才送）────────────────────
+        if stocks_otc:
+            otc_bubbles = []
+            for rank, s in enumerate(
+                sorted(stocks_otc, key=lambda x: x["scores"]["confidence"], reverse=True), 1
+            ):
+                otc_bubbles.append(_build_stock_bubble(s, rank))
+            messages.append(FlexMessage(
+                alt_text=f"🏪 上櫃妖股 {date_str} — {len(stocks_otc)} 檔通過驗證",
+                contents=FlexContainer.from_dict(
+                    {"type": "carousel", "contents": otc_bubbles[:12]}
+                ),
+            ))
+
+        _send(api, user_ids, messages[:5])  # LINE 每次 push 上限 5 則
+        logger.info(
+            "[LINE] 推播成功，上市 %d 檔 + 上櫃 %d 檔（%d 人）",
+            len(stocks_tw), len(stocks_otc), len(user_ids),
         )
-
-        bubbles = [_build_summary_bubble(report)]
-        for rank, s in enumerate(stocks, 1):
-            bubbles.append(_build_stock_bubble(s, rank))
-
-        carousel = {"type": "carousel", "contents": bubbles[:12]}
-        messages = [
-            FlexMessage(
-                alt_text=f"🚀 妖股報告 {report['generated_at'][:10]} — {report['total_candidates']} 檔通過驗證",
-                contents=FlexContainer.from_dict(carousel),
-            )
-        ]
-        _send(api, user_ids, messages)
-        logger.info("[LINE] 推播成功，共 %d 檔（%d 人）", len(stocks), len(user_ids))
         return True
 
     except Exception as e:

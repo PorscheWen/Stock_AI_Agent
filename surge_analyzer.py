@@ -465,42 +465,10 @@ def _fmt_inst(v) -> str:
     return f"+{v:,}" if v > 0 else f"{v:,}"
 
 
-def _build_report(df_top10: pd.DataFrame, date_str: str, sample_n: int) -> str:
-    analysis_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
-    next_day      = _next_trading_day(date_str)
-    now_str       = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    rows = df_top10.to_dict(orient="records")
-
-    lines = [
-        f"# 台股前百大交易量 — 隔日暴漲潛力 TOP {TOP_RESULT_N}",
-        f"**分析基準日**：{analysis_date}　｜　**預測目標日**：{next_day}（下一交易日）",
-        "",
-        "> ⚠️ 本報告僅供參考，不構成投資建議，最終決策請自行判斷。",
-        "",
-        "---",
-        "",
-        "## 分析說明",
-        f"- **分析樣本**：TWSE（上市）+ TPEX（上櫃）全市場 {sample_n} 支個股，依成交量取前 {TOP_VOLUME_N} 支進行篩選",
-        "",
-        "---",
-        "",
-        f"## TOP {TOP_RESULT_N} 暴漲潛力股一覽",
-        "",
-        "| 排名 | 代碼 | 名稱 | 市場 | 收盤 | 當日漲幅 | 成交筆數 | 評分 |",
-        "|------|------|------|------|------|---------|---------|------|",
-    ]
-
-    for i, row in enumerate(rows, 1):
-        lines.append(
-            f"| {i} | {row['code']} | {row['name']} | {row.get('market', '上市')} | "
-            f"{row['close']:.2f} | {row['change_pct']:+.2f}% | "
-            f"{row['volume_lots']:,} | {row['surge_score']:.0f} |"
-        )
-
-    lines += ["", "---", "", "## 個股詳細分析", ""]
-
-    for i, row in enumerate(rows, 1):
+def _build_stock_detail_lines(rows: list[dict], start_rank: int = 1) -> list[str]:
+    """產生個股詳細分析 Markdown 段落（可供上市/上櫃共用）"""
+    lines: list[str] = []
+    for i, row in enumerate(rows, start_rank):
         macd_status  = "金叉 ▲" if row["dif"] > row["dea"] else "死叉 ▼"
         ma_trend     = "多頭排列" if row["ma5"] > row["ma20"] else "空頭排列"
         market_tag   = row.get("market", "上市")
@@ -515,26 +483,91 @@ def _build_report(df_top10: pd.DataFrame, date_str: str, sample_n: int) -> str:
             f"- **RSI(14)**：{row['rsi']:.1f}　**MACD**：{macd_status}　**均線**：{ma_trend}",
             f"- **外資**：{_fmt_inst(row['foreign'])} 張　**投信**：{_fmt_inst(row['trust'])} 張　**自營商**：{_fmt_inst(row['dealer'])} 張",
         ]
-
         if is_otc and otc_warnings:
-            stock_lines += [
-                "",
-                "> ⚠️ **上櫃特有風險警示**",
-            ]
+            stock_lines += ["", "> ⚠️ **上櫃特有風險警示**"]
             for w in otc_warnings:
                 stock_lines.append(f"> - {w}")
-
         stock_lines.append("")
         lines += stock_lines
+    return lines
 
-    lines += [
+
+def _build_report(
+    df_twse: pd.DataFrame,
+    df_tpex: pd.DataFrame,
+    date_str: str,
+    sample_n_twse: int,
+    sample_n_tpex: int,
+) -> str:
+    """上市 TOP N 和上櫃 TOP N 分開呈現的 Markdown 報告"""
+    analysis_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
+    next_day      = _next_trading_day(date_str)
+    now_str       = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    twse_rows = df_twse.to_dict(orient="records") if not df_twse.empty else []
+    tpex_rows = df_tpex.to_dict(orient="records") if not df_tpex.empty else []
+
+    def _table_rows(rows: list[dict]) -> list[str]:
+        out = []
+        for i, row in enumerate(rows, 1):
+            out.append(
+                f"| {i} | {row['code']} | {row['name']} | "
+                f"{row['close']:.2f} | {row['change_pct']:+.2f}% | "
+                f"{row['volume_lots']:,} | {row['surge_score']:.0f} |"
+            )
+        return out
+
+    table_header = [
+        "| 排名 | 代碼 | 名稱 | 收盤 | 當日漲幅 | 成交筆數 | 評分 |",
+        "|------|------|------|------|---------|---------|------|",
+    ]
+
+    lines = [
+        f"# 台股暴漲潛力 — 上市 TOP {TOP_RESULT_N} ＋ 上櫃 TOP {TOP_RESULT_N}",
+        f"**分析基準日**：{analysis_date}　｜　**預測目標日**：{next_day}（下一交易日）",
+        "",
+        "> ⚠️ 本報告僅供參考，不構成投資建議，最終決策請自行判斷。",
+        "",
+        "---",
+        "",
+        "## 分析說明",
+        f"- **上市（TWSE）**：{sample_n_twse} 支，依成交量取前 {TOP_VOLUME_N} 支分析",
+        f"- **上櫃（TPEX）**：{sample_n_tpex} 支，依成交量取前 {TOP_VOLUME_N} 支獨立分析",
+        "",
+        "---",
+        "",
+        f"## 🏦 上市（TWSE）TOP {TOP_RESULT_N}",
+        "",
+        *table_header,
+        *_table_rows(twse_rows),
+        "",
+        "---",
+        "",
+        f"## 🏪 上櫃（TPEX）TOP {TOP_RESULT_N}",
+        "",
+        *table_header,
+        *_table_rows(tpex_rows),
+        "",
+        "---",
+        "",
+        "## 個股詳細分析",
+        "",
+        f"### 🏦 上市個股",
+        "",
+        *_build_stock_detail_lines(twse_rows),
+        f"### 🏪 上櫃個股",
+        "",
+        *_build_stock_detail_lines(tpex_rows),
+        "---",
+        "",
         "## 分析方法說明",
         "",
         "| 評分維度 | 權重 | 主要指標 |",
         "|---------|------|---------|",
-        "| 技術面 | 60分 | 均線排列、RSI、MACD金叉、布林通道、量比 |",
-        "| 法人籌碼 | 30分 | 外資/投信/自營商買賣超，三方同向加分 |",
+        "| 技術面 | 60分 | 均線排列、RSI、MACD金叉、量比 |",
+        "| 法人籌碼 | 30分 | 外資/投信/自營商買賣超 |",
         "| 當日量能 | 20分 | 成交筆數規模 |",
+        "| 上櫃折扣 | — | 上櫃股票風險評估附加警示 |",
         "",
         "*本報告由 Stock_AI_agent 自動生成，資料來源：TWSE（上市）、TPEX（上櫃）、Yahoo Finance*",
         f"*生成時間：{now_str}*",
@@ -545,89 +578,107 @@ def _build_report(df_top10: pd.DataFrame, date_str: str, sample_n: int) -> str:
 
 # ── 主程式 ────────────────────────────────────────────
 
-def main(
-    date_str: str | None = None,
-    enable_line: bool = True,
-) -> tuple[pd.DataFrame, str]:
-    """
-    主分析流程。
-    回傳: (df_top10: pd.DataFrame, report_path: str)
-    """
-    date_str = date_str or _last_trading_date()
-    logger.info(f"[Analyzer] 分析日期：{date_str}")
-
-    # Step 1：取得 TWSE + TPEX 全市場資料
-    logger.info("[Step 1] 取得 TWSE（上市）市場資料...")
-    df_twse = _fetch_twse_market(date_str)
-    if not df_twse.empty:
-        df_twse["_market"] = "TW"
-
-    logger.info("[Step 1] 取得 TPEX（上櫃）市場資料...")
-    df_tpex = _fetch_tpex_market(date_str)
-    # _market = "TWO" 已在 _fetch_tpex_market 內設定
-
-    df_market = pd.concat([df_twse, df_tpex], ignore_index=True)
-    if df_market.empty:
-        logger.warning("[Step 1] 無市場資料，結束")
-        return pd.DataFrame(), ""
-
-    sample_n = len(df_market)
-    logger.info(
-        f"[Step 1] 上市 {len(df_twse)} 檔 + 上櫃 {len(df_tpex)} 檔 = 共 {sample_n} 檔"
-    )
-
-    # Step 2：取前 TOP_VOLUME_N 成交量個股（上市+上櫃合併排序）
-    df_top_vol = df_market.nlargest(TOP_VOLUME_N, "_vol_int").copy()
-    logger.info(f"[Step 2] 取前 {TOP_VOLUME_N} 大成交量個股")
-
-    # Step 3：取得三大法人資料（TWSE + TPEX）
-    logger.info("[Step 3] 取得三大法人資料...")
-    inst_twse = _fetch_twse_institutional(date_str)
-    inst_tpex = _fetch_tpex_institutional(date_str)
-    inst_data = {**inst_tpex, **inst_twse}  # TWSE 優先（key 衝突時以上市為準）
-    logger.info(f"[Step 3] 法人資料 {len(inst_data)} 檔（TWSE {len(inst_twse)} + TPEX {len(inst_tpex)}）")
-
-    # Step 4：逐一分析
-    logger.info(f"[Step 4] 開始分析 {len(df_top_vol)} 檔...")
+def _analyze_market_stocks(
+    df_vol: pd.DataFrame,
+    inst_data: dict,
+    market_suffix: str,
+    label: str,
+) -> pd.DataFrame:
+    """分析指定市場的前百大成交量個股，回傳評分 DataFrame（已按 surge_score 降序）"""
     results = []
-    for i, (_, row) in enumerate(df_top_vol.iterrows(), 1):
+    total = len(df_vol)
+    for i, (_, row) in enumerate(df_vol.iterrows(), 1):
         code = str(row.get("code", "")).strip()
         name = str(row.get("name", code)).strip()
         if not code:
             continue
-        market_suffix = str(row.get("_market", "TW"))
-        logger.info(f"  [{i:3d}/{len(df_top_vol)}] {code} {name} ({market_suffix})")
+        logger.info(f"  [{label} {i:3d}/{total}] {code} {name}")
         result = _analyze_stock(code, name, row, inst_data, suffix=market_suffix)
         if result:
             results.append(result)
-        time.sleep(0.3)  # 避免過度請求 yfinance
-
+        time.sleep(0.3)
     if not results:
-        logger.warning("[Step 4] 無分析結果")
-        return pd.DataFrame(), ""
-
-    # Step 5：排序取 TOP N（TOP_RESULT_N）
-    df_result = (
+        return pd.DataFrame()
+    return (
         pd.DataFrame(results)
         .sort_values("surge_score", ascending=False)
         .reset_index(drop=True)
     )
-    df_top10 = df_result.head(TOP_RESULT_N).copy()
-    logger.info(f"[Step 5] TOP {TOP_RESULT_N} 完成，最高分：{df_top10.iloc[0]['surge_score']:.0f}")
+
+
+def main(
+    date_str: str | None = None,
+    enable_line: bool = True,
+) -> tuple[pd.DataFrame, pd.DataFrame, str]:
+    """
+    主分析流程：上市和上櫃各自取前 TOP_VOLUME_N 分析，分別推薦 TOP_RESULT_N 檔。
+    回傳: (df_twse_top: pd.DataFrame, df_tpex_top: pd.DataFrame, report_path: str)
+    """
+    date_str = date_str or _last_trading_date()
+    logger.info(f"[Analyzer] 分析日期：{date_str}")
+
+    # Step 1：分別取得 TWSE / TPEX 市場資料
+    logger.info("[Step 1] 取得 TWSE（上市）市場資料...")
+    df_twse_mkt = _fetch_twse_market(date_str)
+    if not df_twse_mkt.empty:
+        df_twse_mkt["_market"] = "TW"
+
+    logger.info("[Step 1] 取得 TPEX（上櫃）市場資料...")
+    df_tpex_mkt = _fetch_tpex_market(date_str)
+    # _market = "TWO" 已在 _fetch_tpex_market 內設定
+
+    if df_twse_mkt.empty and df_tpex_mkt.empty:
+        logger.warning("[Step 1] 無任何市場資料，結束")
+        return pd.DataFrame(), pd.DataFrame(), ""
+
+    sample_n_twse = len(df_twse_mkt)
+    sample_n_tpex = len(df_tpex_mkt)
+    logger.info(f"[Step 1] 上市 {sample_n_twse} 檔，上櫃 {sample_n_tpex} 檔")
+
+    # Step 2：各市場取前 TOP_VOLUME_N 成交量個股
+    df_twse_vol = df_twse_mkt.nlargest(TOP_VOLUME_N, "_vol_int").copy() if not df_twse_mkt.empty else pd.DataFrame()
+    df_tpex_vol = df_tpex_mkt.nlargest(TOP_VOLUME_N, "_vol_int").copy() if not df_tpex_mkt.empty else pd.DataFrame()
+    logger.info(f"[Step 2] 上市取 {len(df_twse_vol)} 檔，上櫃取 {len(df_tpex_vol)} 檔")
+
+    # Step 3：取得三大法人資料
+    logger.info("[Step 3] 取得三大法人資料...")
+    inst_twse = _fetch_twse_institutional(date_str)
+    inst_tpex = _fetch_tpex_institutional(date_str)
+    inst_data = {**inst_tpex, **inst_twse}
+    logger.info(f"[Step 3] 法人資料 {len(inst_data)} 檔")
+
+    # Step 4：分別分析上市 / 上櫃
+    logger.info(f"[Step 4a] 分析上市 {len(df_twse_vol)} 檔...")
+    df_twse_all = _analyze_market_stocks(df_twse_vol, inst_data, "TW",  "上市")
+
+    logger.info(f"[Step 4b] 分析上櫃 {len(df_tpex_vol)} 檔...")
+    df_tpex_all = _analyze_market_stocks(df_tpex_vol, inst_data, "TWO", "上櫃")
+
+    # Step 5：各取 TOP_RESULT_N
+    df_twse_top = df_twse_all.head(TOP_RESULT_N).copy() if not df_twse_all.empty else pd.DataFrame()
+    df_tpex_top = df_tpex_all.head(TOP_RESULT_N).copy() if not df_tpex_all.empty else pd.DataFrame()
+
+    if not df_twse_top.empty:
+        logger.info(f"[Step 5] 上市 TOP {TOP_RESULT_N}，最高分：{df_twse_top.iloc[0]['surge_score']:.0f}")
+    if not df_tpex_top.empty:
+        logger.info(f"[Step 5] 上櫃 TOP {TOP_RESULT_N}，最高分：{df_tpex_top.iloc[0]['surge_score']:.0f}")
 
     # Step 6：生成 Markdown 報告
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     report_path = REPORT_DIR / f"surge_report_{date_str}.md"
-    report_path.write_text(_build_report(df_top10, date_str, sample_n), encoding="utf-8")
+    report_path.write_text(
+        _build_report(df_twse_top, df_tpex_top, date_str, sample_n_twse, sample_n_tpex),
+        encoding="utf-8",
+    )
     logger.info(f"[Step 6] 報告已儲存：{report_path}")
 
-    # Step 7：LINE 推播（評分 ≥ 90 的個股）
+    # Step 7：LINE 推播（上市+上櫃各自推薦清單）
     if enable_line:
-        df_push = df_top10[df_top10["surge_score"] >= 70]
-        if not df_push.empty:
-            logger.info("[Step 7] 推播 %d 檔至 LINE...", len(df_push))
+        has_push = not df_twse_top.empty or not df_tpex_top.empty
+        if has_push:
+            logger.info("[Step 7] 推播至 LINE...")
             from line_push import push_surge_report
-            ok = push_surge_report(df_push)
+            ok = push_surge_report(df_twse_top, df_tpex_top)
             if ok:
                 logger.info("[Step 7] LINE 推播成功")
             else:
@@ -636,10 +687,9 @@ def main(
                     "請確認 GitHub Secrets：CHANNEL_STOCK_ACCESS_TOKEN、CHANNEL_STOCK_USER_ID"
                 )
         else:
-            logger.info("[Step 7] 無評分 ≥ 70 的股票，跳過 LINE 推播（最高分：%s）",
-                        df_top10.iloc[0]["surge_score"] if not df_top10.empty else "N/A")
+            logger.info("[Step 7] 無分析結果，跳過 LINE 推播")
 
-    return df_top10, str(report_path)
+    return df_twse_top, df_tpex_top, str(report_path)
 
 
 if __name__ == "__main__":
@@ -648,17 +698,24 @@ if __name__ == "__main__":
     parser.add_argument("--no-line", action="store_true",    help="不推播 LINE")
     args = parser.parse_args()
 
-    df, path = main(date_str=args.date, enable_line=not args.no_line)
+    df_tw, df_otc, path = main(date_str=args.date, enable_line=not args.no_line)
 
-    if not df.empty:
+    if not df_tw.empty or not df_otc.empty:
         print(f"\n✅ 分析完成！報告：{path}")
-        print(f"TOP {TOP_RESULT_N} 暴漲潛力股：")
-        for i, row in df.iterrows():
-            print(
-                f"  #{i+1:2d} {row['code']} {row.get('name',''):8s}"
-                f"  評分={row['surge_score']:.0f}"
-                f"  漲幅={row['change_pct']:+.1f}%"
-            )
+        if not df_tw.empty:
+            print(f"\n🏦 上市 TOP {TOP_RESULT_N}：")
+            for i, row in df_tw.iterrows():
+                print(
+                    f"  #{i+1:2d} {row['code']} {row.get('name',''):8s}"
+                    f"  評分={row['surge_score']:.0f}  漲幅={row['change_pct']:+.1f}%"
+                )
+        if not df_otc.empty:
+            print(f"\n🏪 上櫃 TOP {TOP_RESULT_N}：")
+            for i, row in df_otc.iterrows():
+                print(
+                    f"  #{i+1:2d} {row['code']} {row.get('name',''):8s}"
+                    f"  評分={row['surge_score']:.0f}  漲幅={row['change_pct']:+.1f}%"
+                )
     else:
         print("❌ 分析失敗或無資料")
         sys.exit(1)
