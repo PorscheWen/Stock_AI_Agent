@@ -267,6 +267,45 @@ def _fetch_tpex_institutional(date_str: str) -> dict:
     return {}
 
 
+# ── 上櫃風險評估 ──────────────────────────────────────
+
+def _build_otc_risk_warnings(
+    is_otc: bool,
+    consecutive_days: int,
+    vol_ratio: float,
+    ret5: float,
+) -> list[str]:
+    """產生上櫃股票特有風險警示清單（surge_analyzer 版，不依賴 ATR）"""
+    if not is_otc:
+        return []
+
+    warnings: list[str] = [
+        "【流動性】上櫃成交量通常低於上市，急跌時出場困難，停損單建議掛市價",
+        "【籌碼集中】上櫃小型股大股東比例高，主力出貨跌速快，嚴守停損",
+        "【資訊透明度】上櫃財報揭露頻率低，題材真實性需自行交叉驗證",
+    ]
+
+    if consecutive_days >= 2:
+        warnings.append(
+            f"【連板回落風險】目前第 {consecutive_days} 板，"
+            "上櫃連板股落板平均回撤 15-25%，建議移動停損"
+        )
+
+    if vol_ratio > 10.0:
+        warnings.append(
+            f"【爆量警示】量比達 {vol_ratio:.1f}x，"
+            "上櫃爆量後次日開盤可能出現大幅回落或跳空跌停"
+        )
+
+    if ret5 > 40.0:
+        warnings.append(
+            f"【短期超漲】5日漲幅 {ret5:.1f}%，"
+            "上櫃短期超漲後的均值回歸風險高，注意追高風險"
+        )
+
+    return warnings
+
+
 # ── 技術指標計算 ──────────────────────────────────────
 
 def _calc_rsi(close: pd.Series, period: int = 14) -> float:
@@ -386,24 +425,34 @@ def _analyze_stock(
     elif volume_lots >= 1_000:
         score += 5
 
+    is_otc = suffix == "TWO"
+    otc_warnings = _build_otc_risk_warnings(
+        is_otc=is_otc,
+        consecutive_days=0,        # surge_analyzer 不追蹤連板，傳 0
+        vol_ratio=vol_ratio,
+        ret5=ret5,
+    )
+
     return {
-        "code":        code,
-        "name":        name,
-        "market":      "上櫃" if suffix == "TWO" else "上市",
-        "close":       close_price,
-        "change_pct":  round(change_pct, 2),
-        "volume_lots": volume_lots,
-        "rsi":         round(rsi, 1),
-        "dif":         round(dif, 4),
-        "dea":         round(dea, 4),
-        "ma5":         round(ma5, 2),
-        "ma20":        round(ma20, 2),
-        "vol_ratio":   round(vol_ratio, 2),
-        "ret5":        round(ret5, 2),
-        "foreign":     foreign,
-        "trust":       trust,
-        "dealer":      dealer,
-        "surge_score": round(score, 1),
+        "code":             code,
+        "name":             name,
+        "market":           "上櫃" if is_otc else "上市",
+        "is_otc":           is_otc,
+        "close":            close_price,
+        "change_pct":       round(change_pct, 2),
+        "volume_lots":      volume_lots,
+        "rsi":              round(rsi, 1),
+        "dif":              round(dif, 4),
+        "dea":              round(dea, 4),
+        "ma5":              round(ma5, 2),
+        "ma20":             round(ma20, 2),
+        "vol_ratio":        round(vol_ratio, 2),
+        "ret5":             round(ret5, 2),
+        "foreign":          foreign,
+        "trust":            trust,
+        "dealer":           dealer,
+        "surge_score":      round(score, 1),
+        "otc_risk_warnings": otc_warnings,
     }
 
 
@@ -452,18 +501,31 @@ def _build_report(df_top10: pd.DataFrame, date_str: str, sample_n: int) -> str:
     lines += ["", "---", "", "## 個股詳細分析", ""]
 
     for i, row in enumerate(rows, 1):
-        macd_status = "金叉 ▲" if row["dif"] > row["dea"] else "死叉 ▼"
-        ma_trend    = "多頭排列" if row["ma5"] > row["ma20"] else "空頭排列"
-        market_tag  = row.get("market", "上市")
-        lines += [
+        macd_status  = "金叉 ▲" if row["dif"] > row["dea"] else "死叉 ▼"
+        ma_trend     = "多頭排列" if row["ma5"] > row["ma20"] else "空頭排列"
+        market_tag   = row.get("market", "上市")
+        is_otc       = row.get("is_otc", False)
+        otc_warnings = row.get("otc_risk_warnings", [])
+
+        stock_lines = [
             f"### #{i} {row['name']} ({row['code']}) [{market_tag}]",
             "",
             f"- **收盤價**：{row['close']:.2f}　**當日漲幅**：{row['change_pct']:+.2f}%　**成交筆數**：{row['volume_lots']:,}",
             f"- **綜合評分**：{row['surge_score']:.0f} 分　**量比**：{row['vol_ratio']:.1f}x　**5日漲幅**：{row['ret5']:+.1f}%",
             f"- **RSI(14)**：{row['rsi']:.1f}　**MACD**：{macd_status}　**均線**：{ma_trend}",
             f"- **外資**：{_fmt_inst(row['foreign'])} 張　**投信**：{_fmt_inst(row['trust'])} 張　**自營商**：{_fmt_inst(row['dealer'])} 張",
-            "",
         ]
+
+        if is_otc and otc_warnings:
+            stock_lines += [
+                "",
+                "> ⚠️ **上櫃特有風險警示**",
+            ]
+            for w in otc_warnings:
+                stock_lines.append(f"> - {w}")
+
+        stock_lines.append("")
+        lines += stock_lines
 
     lines += [
         "## 分析方法說明",

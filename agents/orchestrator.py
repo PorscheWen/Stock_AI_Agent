@@ -220,6 +220,8 @@ class OrchestratorAgent:
                 "position_pct"     : rm.suggested_position_pct if rm else 0.10,
                 "liquidity_ok"     : rm.liquidity_ok if rm else True,
                 "risk_level"       : rm.risk_level if rm else 3,
+                "is_otc"           : rm.is_otc if rm else sym.endswith(".TWO"),
+                "otc_risk_warnings": rm.otc_risk_warnings if rm else [],
             }
             candidates.append(c)
         return candidates
@@ -277,6 +279,8 @@ class OrchestratorAgent:
                 "target_price"     : c["target_price"],
                 "risk_reward_ratio": c["risk_reward_ratio"],
                 "position_pct"     : c["position_pct"],
+                "is_otc"           : rm.is_otc if rm else sym.endswith(".TWO"),
+                "otc_risk_warnings": rm.otc_risk_warnings if rm else [],
             },
             "entry": {
                 "method": em.entry_method if em else "",

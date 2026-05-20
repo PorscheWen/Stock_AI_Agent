@@ -74,6 +74,29 @@ def _board_label(boards: int) -> str:
     return labels.get(boards, f"{boards}板")
 
 
+def _market_badge(is_otc: bool) -> dict:
+    """上市/上櫃市場標籤元件"""
+    if is_otc:
+        return {
+            "type": "box", "layout": "horizontal",
+            "backgroundColor": "#7D3C98", "paddingAll": "4px",
+            "cornerRadius": "4px", "width": "40px",
+            "contents": [
+                {"type": "text", "text": "上櫃", "size": "xxs",
+                 "color": "#FFFFFF", "align": "center", "weight": "bold"},
+            ],
+        }
+    return {
+        "type": "box", "layout": "horizontal",
+        "backgroundColor": "#1A5276", "paddingAll": "4px",
+        "cornerRadius": "4px", "width": "40px",
+        "contents": [
+            {"type": "text", "text": "上市", "size": "xxs",
+             "color": "#FFFFFF", "align": "center", "weight": "bold"},
+        ],
+    }
+
+
 def _build_stock_bubble(s: dict, rank: int = 0) -> dict:
     """每檔妖股一個 Flex Bubble"""
     sc    = s["scores"]
@@ -83,10 +106,107 @@ def _build_stock_bubble(s: dict, rank: int = 0) -> dict:
     val   = s["validation"]
     conf  = sc["confidence"]
     boards = s.get("consecutive_days", 1)
+    is_otc = risk.get("is_otc", False)
+    otc_warnings = risk.get("otc_risk_warnings", [])
 
     header_color = _BOARD_COLORS.get(min(boards, 4), "#E74C3C")
     risk_color   = _RISK_COLORS.get(risk["level"], "#95A5A6")
     rank_prefix  = f"#{rank} " if rank else ""
+
+    # 股票代號顯示（去除 .TW / .TWO suffix）
+    display_code = s["symbol"].replace(".TWO", "").replace(".TW", "")
+
+    body_contents = [
+        # 評分列
+        {
+            "type": "box", "layout": "horizontal", "spacing": "sm",
+            "contents": [
+                {"type": "text", "text": "動能", "size": "xs", "color": "#888", "flex": 1},
+                {"type": "text", "text": "催化劑", "size": "xs", "color": "#888", "flex": 1},
+                {"type": "text", "text": "信心", "size": "xs", "color": "#888", "flex": 1},
+            ],
+        },
+        {
+            "type": "box", "layout": "horizontal", "spacing": "sm",
+            "contents": [
+                {"type": "text", "text": f"{sc['momentum']:.0f}", "size": "md", "weight": "bold", "flex": 1},
+                {"type": "text", "text": f"{sc['catalyst']:.0f}", "size": "md", "weight": "bold", "flex": 1},
+                {"type": "text", "text": f"{conf:.0f}%", "size": "md", "weight": "bold",
+                 "color": "#27AE60" if conf >= 65 else "#E74C3C", "flex": 1},
+            ],
+        },
+        {"type": "separator", "margin": "sm"},
+        # 量比 + 風報比
+        {
+            "type": "box", "layout": "horizontal",
+            "contents": [
+                {"type": "text", "text": "量比", "size": "xs", "color": "#888", "flex": 1},
+                {"type": "text", "text": f"{s['volume_ratio']:.1f}x",
+                 "size": "sm", "weight": "bold", "flex": 2},
+                {"type": "text", "text": "風報比", "size": "xs", "color": "#888", "flex": 1},
+                {"type": "text", "text": f"{risk['risk_reward_ratio']:.1f}:1",
+                 "size": "sm", "weight": "bold", "flex": 2},
+            ],
+        },
+        # 進場建議
+        {
+            "type": "box", "layout": "vertical",
+            "backgroundColor": "#E8F5E9", "paddingAll": "10px",
+            "cornerRadius": "8px", "margin": "sm",
+            "contents": [
+                {"type": "text", "text": "🎯 進場建議", "size": "xs", "weight": "bold", "color": "#2E7D32"},
+                {"type": "text", "text": entry["method"],
+                 "size": "xs", "color": "#333", "wrap": True, "margin": "xs"},
+                {"type": "text", "text": entry["timing"],
+                 "size": "xs", "color": "#555", "wrap": True, "margin": "xs"},
+            ],
+        },
+        # 出場計劃
+        {
+            "type": "box", "layout": "vertical",
+            "backgroundColor": "#FFF3E0", "paddingAll": "10px",
+            "cornerRadius": "8px",
+            "contents": [
+                {"type": "text", "text": "🚪 出場計劃", "size": "xs", "weight": "bold", "color": "#E65100"},
+                {"type": "text", "text": exit_["summary"],
+                 "size": "xs", "color": "#333", "wrap": True, "margin": "xs"},
+                {"type": "text",
+                 "text": f"停損 ${risk['stop_loss_price']:,.2f}（-{risk['stop_loss_pct']:.1f}%）",
+                 "size": "xs", "color": "#E74C3C", "margin": "xs"},
+            ],
+        },
+        # 驗證結果
+        {
+            "type": "box", "layout": "horizontal", "margin": "sm",
+            "contents": [
+                {"type": "text",
+                 "text": f"{'✅' if val['check1'] else '❌'} 動能  "
+                         f"{'✅' if val['check2'] else '❌'} 風控  "
+                         f"{'✅' if val['check3'] else '❌'} 空方",
+                 "size": "xs", "color": "#555", "wrap": True},
+            ],
+        },
+    ]
+
+    # 上櫃特有風險警示區塊（最多顯示前 3 條）
+    if is_otc and otc_warnings:
+        warning_items = [
+            {"type": "text", "text": "⚠️ 上櫃特有風險", "size": "xs",
+             "weight": "bold", "color": "#6C3483"},
+        ]
+        for w in otc_warnings[:3]:
+            # 截取前 40 字，避免 LINE 卡片過長
+            short = w[:60] + "…" if len(w) > 60 else w
+            warning_items.append({
+                "type": "text", "text": f"• {short}",
+                "size": "xxs", "color": "#5D4037", "wrap": True, "margin": "xs",
+            })
+        body_contents.append({
+            "type": "box", "layout": "vertical",
+            "backgroundColor": "#F3E5F5", "paddingAll": "10px",
+            "cornerRadius": "8px", "margin": "sm",
+            "contents": warning_items,
+        })
 
     return {
         "type": "bubble",
@@ -104,8 +224,17 @@ def _build_stock_bubble(s: dict, rank: int = 0) -> dict:
                         {
                             "type": "box", "layout": "vertical", "flex": 1,
                             "contents": [
-                                {"type": "text", "text": f"{rank_prefix}{s['symbol'].replace('.TW','')} {s['name']}",
-                                 "size": "lg", "weight": "bold", "color": "#FFFFFF"},
+                                {
+                                    "type": "box", "layout": "horizontal",
+                                    "spacing": "sm", "margin": "none",
+                                    "contents": [
+                                        _market_badge(is_otc),
+                                        {"type": "text",
+                                         "text": f"{rank_prefix}{display_code} {s['name']}",
+                                         "size": "lg", "weight": "bold",
+                                         "color": "#FFFFFF", "flex": 1},
+                                    ],
+                                },
                                 {"type": "text", "text": _board_label(boards),
                                  "size": "sm", "color": "#FFFFFF", "margin": "xs"},
                             ],
@@ -128,77 +257,7 @@ def _build_stock_bubble(s: dict, rank: int = 0) -> dict:
             "layout": "vertical",
             "spacing": "md",
             "paddingAll": "14px",
-            "contents": [
-                # 評分列
-                {
-                    "type": "box", "layout": "horizontal", "spacing": "sm",
-                    "contents": [
-                        {"type": "text", "text": "動能", "size": "xs", "color": "#888", "flex": 1},
-                        {"type": "text", "text": "催化劑", "size": "xs", "color": "#888", "flex": 1},
-                        {"type": "text", "text": "信心", "size": "xs", "color": "#888", "flex": 1},
-                    ],
-                },
-                {
-                    "type": "box", "layout": "horizontal", "spacing": "sm",
-                    "contents": [
-                        {"type": "text", "text": f"{sc['momentum']:.0f}", "size": "md", "weight": "bold", "flex": 1},
-                        {"type": "text", "text": f"{sc['catalyst']:.0f}", "size": "md", "weight": "bold", "flex": 1},
-                        {"type": "text", "text": f"{conf:.0f}%", "size": "md", "weight": "bold",
-                         "color": "#27AE60" if conf >= 65 else "#E74C3C", "flex": 1},
-                    ],
-                },
-                {"type": "separator", "margin": "sm"},
-                # 量比
-                {
-                    "type": "box", "layout": "horizontal",
-                    "contents": [
-                        {"type": "text", "text": "量比", "size": "xs", "color": "#888", "flex": 1},
-                        {"type": "text", "text": f"{s['volume_ratio']:.1f}x",
-                         "size": "sm", "weight": "bold", "flex": 2},
-                        {"type": "text", "text": "風報比", "size": "xs", "color": "#888", "flex": 1},
-                        {"type": "text", "text": f"{risk['risk_reward_ratio']:.1f}:1",
-                         "size": "sm", "weight": "bold", "flex": 2},
-                    ],
-                },
-                # 進場建議
-                {
-                    "type": "box", "layout": "vertical",
-                    "backgroundColor": "#E8F5E9", "paddingAll": "10px",
-                    "cornerRadius": "8px", "margin": "sm",
-                    "contents": [
-                        {"type": "text", "text": "🎯 進場建議", "size": "xs", "weight": "bold", "color": "#2E7D32"},
-                        {"type": "text", "text": entry["method"],
-                         "size": "xs", "color": "#333", "wrap": True, "margin": "xs"},
-                        {"type": "text", "text": entry["timing"],
-                         "size": "xs", "color": "#555", "wrap": True, "margin": "xs"},
-                    ],
-                },
-                # 出場計劃
-                {
-                    "type": "box", "layout": "vertical",
-                    "backgroundColor": "#FFF3E0", "paddingAll": "10px",
-                    "cornerRadius": "8px",
-                    "contents": [
-                        {"type": "text", "text": "🚪 出場計劃", "size": "xs", "weight": "bold", "color": "#E65100"},
-                        {"type": "text", "text": exit_["summary"],
-                         "size": "xs", "color": "#333", "wrap": True, "margin": "xs"},
-                        {"type": "text",
-                         "text": f"停損 ${risk['stop_loss_price']:,.2f}（-{risk['stop_loss_pct']:.1f}%）",
-                         "size": "xs", "color": "#E74C3C", "margin": "xs"},
-                    ],
-                },
-                # 驗證結果
-                {
-                    "type": "box", "layout": "horizontal", "margin": "sm",
-                    "contents": [
-                        {"type": "text",
-                         "text": f"{'✅' if val['check1'] else '❌'} 動能  "
-                                 f"{'✅' if val['check2'] else '❌'} 風控  "
-                                 f"{'✅' if val['check3'] else '❌'} 空方",
-                         "size": "xs", "color": "#555", "wrap": True},
-                    ],
-                },
-            ],
+            "contents": body_contents,
         },
         "footer": {
             "type": "box",
@@ -207,7 +266,10 @@ def _build_stock_bubble(s: dict, rank: int = 0) -> dict:
             "paddingAll": "10px",
             "contents": [
                 {"type": "text",
-                 "text": f"{risk['risk_label']} — 建議倉位 {risk['position_pct']:.0%}",
+                 "text": (
+                     f"{'[上櫃] ' if is_otc else ''}"
+                     f"{risk['risk_label']} — 建議倉位 {risk['position_pct']:.0%}"
+                 ),
                  "size": "xs", "color": "#FFFFFF", "align": "center"},
             ],
         },

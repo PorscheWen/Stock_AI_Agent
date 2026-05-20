@@ -232,12 +232,15 @@ def _summary_bubble(date_str: str, count: int, batch_info: str = None) -> dict:
 
 # ── 個股 Bubble（ETF repo 風格） ──────────────────────
 def _stock_bubble(row: dict, rank: int) -> dict:
-    score   = row["surge_score"]
-    label   = _score_label(score)
-    color   = _score_color(score)
-    chg     = row["change_pct"]
-    chg_str = f"{chg:+.2f}%"
-    now_str = datetime.now().strftime("%H:%M")
+    score    = row["surge_score"]
+    label    = _score_label(score)
+    color    = _score_color(score)
+    chg      = row["change_pct"]
+    chg_str  = f"{chg:+.2f}%"
+    now_str  = datetime.now().strftime("%H:%M")
+    is_otc   = row.get("is_otc", False)
+    market_label = "上櫃" if is_otc else "上市"
+    market_color = "#7D3C98" if is_otc else "#1A5276"
 
     macd_str = _macd_status(row["dif"], row["dea"])
     ma_trend = "多頭排列" if row["ma5"] > row["ma20"] else "空頭排列"
@@ -276,7 +279,26 @@ def _stock_bubble(row: dict, rank: int) -> dict:
                     {
                         "type": "box",
                         "layout": "horizontal",
+                        "spacing": "sm",
                         "contents": [
+                            # 上市/上櫃市場標籤
+                            {
+                                "type": "box",
+                                "layout": "vertical",
+                                "backgroundColor": market_color,
+                                "paddingAll": "3px",
+                                "cornerRadius": "4px",
+                                "flex": 0,
+                                "contents": [
+                                    {
+                                        "type": "text",
+                                        "text": market_label,
+                                        "size": "xxs",
+                                        "color": "#FFFFFF",
+                                        "weight": "bold",
+                                    },
+                                ],
+                            },
                             {
                                 "type": "text",
                                 "text": f"#{rank} {row.get('name', row['code'])}",
@@ -288,7 +310,7 @@ def _stock_bubble(row: dict, rank: int) -> dict:
                             },
                             {
                                 "type": "text",
-                                "text": f"  ({row['code']})",
+                                "text": f"({row['code']})",
                                 "color": "#FFFFFFAA",
                                 "size": "sm",
                                 "flex": 0,
@@ -297,7 +319,7 @@ def _stock_bubble(row: dict, rank: int) -> dict:
                     },
                     {
                         "type": "text",
-                        "text": f"今日漲幅 {chg_str}　成交 {row['volume_lots']:,} 張",
+                        "text": f"今日漲幅 {chg_str}　成交 {row['volume_lots']:,} 筆",
                         "color": "#FFFFFFAA",
                         "size": "xxs",
                         "margin": "xs",
@@ -537,23 +559,58 @@ def _stock_bubble(row: dict, rank: int) -> dict:
         ],
     }
 
+    body_contents = [
+        price_row,
+        {"type": "separator", "margin": "md"},
+        score_row,
+        {"type": "separator", "margin": "md"},
+        _section_title("📊 技術指標"),
+        indicator_grid,
+        {"type": "separator", "margin": "md"},
+        _section_title("💼 法人籌碼（張）"),
+        inst_row,
+        strategy_section,
+    ]
+
+    # 上櫃特有風險警示區塊
+    otc_warnings = row.get("otc_risk_warnings", [])
+    if is_otc and otc_warnings:
+        warning_items = [
+            {
+                "type": "text",
+                "text": "⚠️ 上櫃特有風險",
+                "size": "xs",
+                "weight": "bold",
+                "color": "#6C3483",
+            },
+            {"type": "separator", "margin": "xs"},
+        ]
+        for w in otc_warnings[:3]:
+            short = w[:55] + "…" if len(w) > 55 else w
+            warning_items.append({
+                "type": "text",
+                "text": f"• {short}",
+                "size": "xxs",
+                "color": "#5D4037",
+                "wrap": True,
+                "margin": "xs",
+            })
+        body_contents.append({
+            "type": "box",
+            "layout": "vertical",
+            "margin": "md",
+            "backgroundColor": "#F3E5F5",
+            "paddingAll": "10px",
+            "cornerRadius": "8px",
+            "contents": warning_items,
+        })
+
     # ── Body ─────────────────────────────────────────
     body = {
         "type": "box",
         "layout": "vertical",
         "paddingAll": "14px",
-        "contents": [
-            price_row,
-            {"type": "separator", "margin": "md"},
-            score_row,
-            {"type": "separator", "margin": "md"},
-            _section_title("📊 技術指標"),
-            indicator_grid,
-            {"type": "separator", "margin": "md"},
-            _section_title("💼 法人籌碼（張）"),
-            inst_row,
-            strategy_section,
-        ],
+        "contents": body_contents,
     }
 
     # ── Footer ────────────────────────────────────────
