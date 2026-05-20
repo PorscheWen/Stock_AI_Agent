@@ -2,7 +2,7 @@
 """
 📊 surge_analyzer.py — 台股暴漲潛力分析
 
-分析 TWSE 前百大成交量個股，評估隔日暴漲潛力並輸出報告。
+分析 TWSE + TPEX（上市+上櫃）前百大成交量個股，評估隔日暴漲潛力並輸出報告。
 
 用法：
   python surge_analyzer.py                   # 分析今日（或最新交易日）
@@ -45,6 +45,16 @@ TWSE_INST_URL = (
     "https://www.twse.com.tw/rwd/zh/fund/"
     "T86?response=json&date={date}&selectType=ALL"
 )
+# TPEX（上櫃）使用民國年格式 {roc_date} = "115/05/19"
+TPEX_MARKET_URL = (
+    "https://www.tpex.org.tw/web/stock/aftertrading/"
+    "otc_quotes_no1430/stk_wn1430_result.php"
+    "?l=zh-tw&d={roc_date}&se=EW"
+)
+TPEX_INST_URL = (
+    "https://www.tpex.org.tw/web/stock/3insti/daily_trade/"
+    "3itrade_hedge_result.php?l=zh-tw&se=EW&t=D&d={roc_date}"
+)
 
 
 # ── 工具函式 ─────────────────────────────────────────
@@ -61,6 +71,12 @@ def _parse_int(val) -> int:
         return int(str(val).replace(",", "").replace("--", "0").strip())
     except (ValueError, AttributeError):
         return 0
+
+
+def _ad_to_roc(date_str: str) -> str:
+    """將 YYYYMMDD 轉為 TPEX 民國年格式 YYY/MM/DD"""
+    dt = datetime.strptime(date_str, "%Y%m%d")
+    return f"{dt.year - 1911}/{dt.month:02d}/{dt.day:02d}"
 
 
 def _last_trading_date() -> str:
@@ -165,6 +181,92 @@ def _fetch_twse_institutional(date_str: str) -> dict:
     return {}
 
 
+# ── TPEX 資料抓取 ─────────────────────────────────────
+
+def _fetch_tpex_market(date_str: str) -> pd.DataFrame:
+    """抓取 TPEX 上櫃股票當日收盤資料（欄位對齊 TWSE schema）
+
+    TPEX 回傳結構：{"tables":[{"data":[...]}], "stat":"ok"}
+    欄位順序：代號,名稱,收盤,漲跌,開盤,最高,最低,成交股數,成交金額,成交筆數,...
+    """
+    roc_date = _ad_to_roc(date_str)
+    url = TPEX_MARKET_URL.format(roc_date=roc_date)
+    try:
+        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        logger.warning(f"[TPEX] 無法取得市場資料: {e}")
+        return pd.DataFrame()
+
+    tables = data.get("tables", [])
+    rows = tables[0].get("data", []) if tables else []
+    if not rows:
+        return pd.DataFrame()
+
+    records = []
+    for r in rows:
+        if len(r) < 10:
+            continue
+        records.append({
+            "code":          str(r[0]).strip(),
+            "name":          str(r[1]).strip(),
+            "close":         r[2],
+            "change":        r[3],
+            "open":          r[4],
+            "high":          r[5],
+            "low":           r[6],
+            "volume_shares": r[7],
+            "value":         r[8],
+            "volume_lots":   r[9],
+            "_market":       "TWO",
+        })
+
+    df = pd.DataFrame(records)
+    if df.empty:
+        return pd.DataFrame()
+    df = df[df["code"].str.match(r"^\d{4}$", na=False)].copy()
+    df["_vol_int"] = df["volume_lots"].apply(_parse_int)
+    return df
+
+
+def _fetch_tpex_institutional(date_str: str) -> dict:
+    """抓取 TPEX 三大法人買賣超，回傳 {code: {foreign, trust, dealer}}
+
+    TPEX 回傳結構：{"tables":[{"data":[...]}], "stat":"ok"}
+    欄位：[0]代號 [1]名稱 [4]外資淨買超 [10]投信淨買超 [19]自營商淨買超合計
+    """
+    for attempt_date in _iter_trading_dates(date_str, max_back=3):
+        roc_date = _ad_to_roc(attempt_date)
+        url = TPEX_INST_URL.format(roc_date=roc_date)
+        result: dict = {}
+        try:
+            resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+            tables = data.get("tables", [])
+            rows = tables[0].get("data", []) if tables else []
+            if not rows:
+                logger.debug(f"[TPEX] 法人 {attempt_date} 無資料，嘗試前一日")
+                continue
+            for row in rows:
+                if len(row) < 20:
+                    continue
+                code = str(row[0]).strip()
+                result[code] = {
+                    "foreign": _parse_int(row[4]),
+                    "trust":   _parse_int(row[10]),
+                    "dealer":  _parse_int(row[19]),
+                }
+            if result:
+                if attempt_date != date_str:
+                    logger.info(f"[TPEX] 法人資料使用 {attempt_date}（{date_str} 尚未公布）")
+                return result
+        except Exception as e:
+            logger.warning(f"[TPEX] 無法取得法人資料 ({attempt_date}): {e}")
+    return {}
+
+
 # ── 技術指標計算 ──────────────────────────────────────
 
 def _calc_rsi(close: pd.Series, period: int = 14) -> float:
@@ -186,15 +288,16 @@ def _calc_macd(close: pd.Series) -> tuple[float, float]:
     return float(dif.iloc[-1]), float(dea.iloc[-1])
 
 
-def _fetch_yf(code: str) -> pd.DataFrame | None:
+def _fetch_yf(code: str, suffix: str = "TW") -> pd.DataFrame | None:
+    """抓取 Yahoo Finance 歷史資料；上市用 .TW，上櫃用 .TWO"""
     try:
-        ticker = yf.Ticker(f"{code}.TW")
+        ticker = yf.Ticker(f"{code}.{suffix}")
         df = ticker.history(period="60d")
         if df is None or df.empty or len(df) < 20:
             return None
         return df
     except Exception as e:
-        logger.debug(f"[yf] {code} 取得失敗: {e}")
+        logger.debug(f"[yf] {code}.{suffix} 取得失敗: {e}")
         return None
 
 
@@ -205,8 +308,11 @@ def _analyze_stock(
     name: str,
     twse_row: pd.Series,
     inst: dict,
+    suffix: str = "TW",
 ) -> dict | None:
-    """分析單一股票，回傳評分字典；資料不足時回傳 None"""
+    """分析單一股票，回傳評分字典；資料不足時回傳 None。
+    suffix: 'TW' 表上市，'TWO' 表上櫃（影響 yfinance 查詢）。
+    """
     close_price = _parse_float(twse_row.get("close", 0))
     change_val  = _parse_float(twse_row.get("change", 0))
     volume_lots = _parse_int(twse_row.get("volume_lots", 0))
@@ -217,7 +323,7 @@ def _analyze_stock(
     prev_close = close_price - change_val
     change_pct = (change_val / prev_close * 100) if prev_close > 0 else 0.0
 
-    df = _fetch_yf(code)
+    df = _fetch_yf(code, suffix=suffix)
     if df is None:
         return None
 
@@ -283,6 +389,7 @@ def _analyze_stock(
     return {
         "code":        code,
         "name":        name,
+        "market":      "上櫃" if suffix == "TWO" else "上市",
         "close":       close_price,
         "change_pct":  round(change_pct, 2),
         "volume_lots": volume_lots,
@@ -325,19 +432,19 @@ def _build_report(df_top10: pd.DataFrame, date_str: str, sample_n: int) -> str:
         "---",
         "",
         "## 分析說明",
-        f"- **分析樣本**：TWSE 全市場 {sample_n} 支個股，依成交量(張)取前 {TOP_VOLUME_N} 支個股進行篩選",
+        f"- **分析樣本**：TWSE（上市）+ TPEX（上櫃）全市場 {sample_n} 支個股，依成交量取前 {TOP_VOLUME_N} 支進行篩選",
         "",
         "---",
         "",
         f"## TOP {TOP_RESULT_N} 暴漲潛力股一覽",
         "",
-        "| 排名 | 代碼 | 名稱 | 收盤 | 當日漲幅 | 成交量(張) | 評分 |",
-        "|------|------|------|------|---------|-----------|------|",
+        "| 排名 | 代碼 | 名稱 | 市場 | 收盤 | 當日漲幅 | 成交筆數 | 評分 |",
+        "|------|------|------|------|------|---------|---------|------|",
     ]
 
     for i, row in enumerate(rows, 1):
         lines.append(
-            f"| {i} | {row['code']} | {row['name']} | "
+            f"| {i} | {row['code']} | {row['name']} | {row.get('market', '上市')} | "
             f"{row['close']:.2f} | {row['change_pct']:+.2f}% | "
             f"{row['volume_lots']:,} | {row['surge_score']:.0f} |"
         )
@@ -347,10 +454,11 @@ def _build_report(df_top10: pd.DataFrame, date_str: str, sample_n: int) -> str:
     for i, row in enumerate(rows, 1):
         macd_status = "金叉 ▲" if row["dif"] > row["dea"] else "死叉 ▼"
         ma_trend    = "多頭排列" if row["ma5"] > row["ma20"] else "空頭排列"
+        market_tag  = row.get("market", "上市")
         lines += [
-            f"### #{i} {row['name']} ({row['code']})",
+            f"### #{i} {row['name']} ({row['code']}) [{market_tag}]",
             "",
-            f"- **收盤價**：{row['close']:.2f}　**當日漲幅**：{row['change_pct']:+.2f}%　**成交量**：{row['volume_lots']:,} 張",
+            f"- **收盤價**：{row['close']:.2f}　**當日漲幅**：{row['change_pct']:+.2f}%　**成交筆數**：{row['volume_lots']:,}",
             f"- **綜合評分**：{row['surge_score']:.0f} 分　**量比**：{row['vol_ratio']:.1f}x　**5日漲幅**：{row['ret5']:+.1f}%",
             f"- **RSI(14)**：{row['rsi']:.1f}　**MACD**：{macd_status}　**均線**：{ma_trend}",
             f"- **外資**：{_fmt_inst(row['foreign'])} 張　**投信**：{_fmt_inst(row['trust'])} 張　**自營商**：{_fmt_inst(row['dealer'])} 張",
@@ -364,9 +472,9 @@ def _build_report(df_top10: pd.DataFrame, date_str: str, sample_n: int) -> str:
         "|---------|------|---------|",
         "| 技術面 | 60分 | 均線排列、RSI、MACD金叉、布林通道、量比 |",
         "| 法人籌碼 | 30分 | 外資/投信/自營商買賣超，三方同向加分 |",
-        "| 當日量能 | 20分 | 成交量(張)規模、當日漲幅是否溫和 |",
+        "| 當日量能 | 20分 | 成交筆數規模 |",
         "",
-        "*本報告由 Stock_AI_agent 自動生成，資料來源：TWSE、Yahoo Finance*",
+        "*本報告由 Stock_AI_agent 自動生成，資料來源：TWSE（上市）、TPEX（上櫃）、Yahoo Finance*",
         f"*生成時間：{now_str}*",
     ]
 
@@ -386,23 +494,36 @@ def main(
     date_str = date_str or _last_trading_date()
     logger.info(f"[Analyzer] 分析日期：{date_str}")
 
-    # Step 1：取得 TWSE 全市場資料
-    logger.info("[Step 1] 取得 TWSE 全市場資料...")
-    df_market = _fetch_twse_market(date_str)
+    # Step 1：取得 TWSE + TPEX 全市場資料
+    logger.info("[Step 1] 取得 TWSE（上市）市場資料...")
+    df_twse = _fetch_twse_market(date_str)
+    if not df_twse.empty:
+        df_twse["_market"] = "TW"
+
+    logger.info("[Step 1] 取得 TPEX（上櫃）市場資料...")
+    df_tpex = _fetch_tpex_market(date_str)
+    # _market = "TWO" 已在 _fetch_tpex_market 內設定
+
+    df_market = pd.concat([df_twse, df_tpex], ignore_index=True)
     if df_market.empty:
         logger.warning("[Step 1] 無市場資料，結束")
         return pd.DataFrame(), ""
 
     sample_n = len(df_market)
+    logger.info(
+        f"[Step 1] 上市 {len(df_twse)} 檔 + 上櫃 {len(df_tpex)} 檔 = 共 {sample_n} 檔"
+    )
 
-    # Step 2：取前 TOP_VOLUME_N 成交量個股
+    # Step 2：取前 TOP_VOLUME_N 成交量個股（上市+上櫃合併排序）
     df_top_vol = df_market.nlargest(TOP_VOLUME_N, "_vol_int").copy()
-    logger.info(f"[Step 2] 取前 {TOP_VOLUME_N} 大成交量個股（共 {sample_n} 檔）")
+    logger.info(f"[Step 2] 取前 {TOP_VOLUME_N} 大成交量個股")
 
-    # Step 3：取得三大法人資料
+    # Step 3：取得三大法人資料（TWSE + TPEX）
     logger.info("[Step 3] 取得三大法人資料...")
-    inst_data = _fetch_twse_institutional(date_str)
-    logger.info(f"[Step 3] 法人資料 {len(inst_data)} 檔")
+    inst_twse = _fetch_twse_institutional(date_str)
+    inst_tpex = _fetch_tpex_institutional(date_str)
+    inst_data = {**inst_tpex, **inst_twse}  # TWSE 優先（key 衝突時以上市為準）
+    logger.info(f"[Step 3] 法人資料 {len(inst_data)} 檔（TWSE {len(inst_twse)} + TPEX {len(inst_tpex)}）")
 
     # Step 4：逐一分析
     logger.info(f"[Step 4] 開始分析 {len(df_top_vol)} 檔...")
@@ -412,8 +533,9 @@ def main(
         name = str(row.get("name", code)).strip()
         if not code:
             continue
-        logger.info(f"  [{i:3d}/{len(df_top_vol)}] {code} {name}")
-        result = _analyze_stock(code, name, row, inst_data)
+        market_suffix = str(row.get("_market", "TW"))
+        logger.info(f"  [{i:3d}/{len(df_top_vol)}] {code} {name} ({market_suffix})")
+        result = _analyze_stock(code, name, row, inst_data, suffix=market_suffix)
         if result:
             results.append(result)
         time.sleep(0.3)  # 避免過度請求 yfinance
